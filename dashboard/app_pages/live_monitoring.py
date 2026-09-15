@@ -1,10 +1,14 @@
 import threading
+from pathlib import Path
 
 import av
 import cv2
 import streamlit as st
-from ultralytics import YOLO
 from streamlit_webrtc import WebRtcMode, VideoProcessorBase, webrtc_streamer
+
+from agents.safety_agent import SafetyAgent
+from agents.safety_intelligence_agent import SafetyIntelligenceAgent
+from agents.site_risk_agent import SiteRiskAgent
 
 
 # ============================================================
@@ -15,26 +19,49 @@ st.title("📹 Real-Time Site Monitoring")
 
 st.caption(
     "AI-powered real-time construction site safety monitoring "
-    "using the trained YOLO model."
+    "using Safety Agent, Safety Intelligence Agent and Site Risk Agent."
 )
 
 
 # ============================================================
-# LOAD YOLO MODEL
+# PROJECT ROOT
+# ============================================================
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+
+
+# ============================================================
+# LOAD AGENTS
 # ============================================================
 
 @st.cache_resource
-def load_yolo_model():
-    model_path = "runs/detect/models/safety_yolo-2/weights/best.pt"
+def load_agents():
 
-    return YOLO(model_path)
+    safety_agent = SafetyAgent()
+    safety_intelligence_agent = SafetyIntelligenceAgent()
+    site_risk_agent = SiteRiskAgent()
+
+    return (
+        safety_agent,
+        safety_intelligence_agent,
+        site_risk_agent,
+    )
 
 
 try:
-    model = load_yolo_model()
+
+    (
+        safety_agent,
+        safety_intelligence_agent,
+        site_risk_agent,
+    ) = load_agents()
+
 except Exception as e:
-    st.error("❌ Unable to load the YOLO safety model.")
+
+    st.error("❌ Unable to load safety agents.")
+
     st.code(str(e))
+
     st.stop()
 
 
@@ -45,6 +72,7 @@ except Exception as e:
 class MonitoringState:
 
     def __init__(self):
+
         self.lock = threading.Lock()
 
         self.workers_detected = 0
@@ -59,75 +87,276 @@ class MonitoringState:
 
         self.site_status = "SAFE"
 
+        # Safety Intelligence
+        self.worker_protection_level = "Good"
+        self.safety_score = 100
+        self.confirmed_violations = []
+        self.safety_actions = []
 
-if (
-    "live_monitoring_state" not in st.session_state
-    or st.session_state["live_monitoring_state"] is None
-    or not isinstance(
-        st.session_state["live_monitoring_state"],
-        MonitoringState,
-    )
-):
-    st.session_state["live_monitoring_state"] = MonitoringState()
+        # Site Risk
+        self.site_risk_level = "Low"
+        self.site_risk_score = 0
+        self.hazards = []
+        self.site_actions = []
 
-monitoring_state = st.session_state["live_monitoring_state"]
+        # Complete reports
+        self.safety_report = {}
+        self.worker_protection_report = {}
+        self.site_report = {}
+
+
+@st.cache_resource
+def get_monitoring_state():
+
+    return MonitoringState()
+
+
+monitoring_state = get_monitoring_state()
 
 
 # ============================================================
-# YOLO VIDEO PROCESSOR
+# GET LATEST PROJECT ANALYSIS
+# ============================================================
+
+def get_project_context():
+
+    analysis = st.session_state.get("analysis_result")
+
+    if analysis:
+
+        project_risk = analysis.get(
+            "project_risk",
+            "Low"
+        )
+
+        equipment_mttf = analysis.get(
+            "equipment_mttf",
+            1000
+        )
+
+        weather = analysis.get(
+            "weather_prediction",
+            analysis.get(
+                "weather",
+                "Clear"
+            )
+        )
+
+        return (
+            project_risk,
+            float(equipment_mttf),
+            weather,
+            True,
+        )
+
+    # --------------------------------------------------------
+    # Baseline when Site Assessment has not been run
+    # --------------------------------------------------------
+
+    return (
+        "Low",
+        1000.0,
+        "Clear",
+        False,
+    )
+
+
+# ============================================================
+# YOLO + AGENT PROCESSOR
 # ============================================================
 
 class SafetyVideoProcessor(VideoProcessorBase):
 
     def __init__(self):
 
-        self.model = model
+        self.safety_agent = safety_agent
 
-        self.frame_count = 0
+        self.safety_intelligence_agent = (
+            safety_intelligence_agent
+        )
 
-        self.last_results = {
-            "workers": 0,
-            "violations": {
-                "NO-Hardhat": 0,
-                "NO-Mask": 0,
-                "NO-Safety Vest": 0,
-            },
-            "detections": 0,
-            "status": "SAFE",
-        }
+        self.site_risk_agent = site_risk_agent
 
     def recv(self, frame):
 
-        # Convert WebRTC frame to OpenCV image
-        image = frame.to_ndarray(format="bgr24")
+        # ----------------------------------------------------
+        # Convert WebRTC frame to OpenCV
+        # ----------------------------------------------------
 
-        self.frame_count += 1
+        image = frame.to_ndarray(
+            format="bgr24"
+        )
 
         # ----------------------------------------------------
-        # Run YOLO
+        # SAFETY AGENT
         # ----------------------------------------------------
 
         try:
 
-            results = self.model(
-                image,
-                verbose=False,
-                conf=0.50,
-                imgsz=640,
+            safety_report = (
+                self.safety_agent.inspect_frame(
+                    image
+                )
             )
 
         except Exception:
+
             return av.VideoFrame.from_ndarray(
                 image,
                 format="bgr24"
             )
 
+        # ----------------------------------------------------
+        # SAFETY INTELLIGENCE AGENT
+        # ----------------------------------------------------
+
+        try:
+
+            worker_protection_report = (
+                self.safety_intelligence_agent
+                .analyze_worker_protection(
+                    safety_report
+                )
+            )
+
+        except Exception:
+
+            worker_protection_report = {
+                "worker_protection_level": "Unknown",
+                "safety_score": 0,
+                "confirmed_violations": [],
+                "recommended_actions": [],
+                "workers_detected": 0,
+            }
 
         # ----------------------------------------------------
-        # Current frame statistics
+        # PROJECT / EQUIPMENT / WEATHER CONTEXT
         # ----------------------------------------------------
 
-        workers_detected = 0
+        project_risk = "Low"
+        equipment_mttf = 1000.0
+        weather = "Clear"
+
+        # We cannot safely read Streamlit session_state
+        # inside the WebRTC callback thread.
+        #
+        # Therefore the latest values are copied into
+        # processor attributes before processing.
+
+        if hasattr(self, "project_risk"):
+
+            project_risk = self.project_risk
+
+        if hasattr(self, "equipment_mttf"):
+
+            equipment_mttf = self.equipment_mttf
+
+        if hasattr(self, "weather"):
+
+            weather = self.weather
+
+        # ----------------------------------------------------
+        # SITE RISK AGENT
+        # ----------------------------------------------------
+
+        try:
+
+            site_report = (
+                self.site_risk_agent.assess_site(
+                    project_risk,
+                    equipment_mttf,
+                    weather,
+                    safety_report,
+                )
+            )
+
+        except Exception:
+
+            site_report = {
+                "site_risk_level": "Low",
+                "site_risk_score": 0,
+                "hazards": [],
+                "recommended_actions": [],
+            }
+
+        # ----------------------------------------------------
+        # EXTRACT DATA
+        # ----------------------------------------------------
+
+        detections = safety_report.get(
+            "detections",
+            []
+        )
+
+        violations = safety_report.get(
+            "violations",
+            []
+        )
+
+        workers_detected = (
+            worker_protection_report.get(
+                "workers_detected",
+                0
+            )
+        )
+
+        confirmed_violations = (
+            worker_protection_report.get(
+                "confirmed_violations",
+                []
+            )
+        )
+
+        safety_score = (
+            worker_protection_report.get(
+                "safety_score",
+                0
+            )
+        )
+
+        protection_level = (
+            worker_protection_report.get(
+                "worker_protection_level",
+                "Unknown"
+            )
+        )
+
+        site_risk_level = (
+            site_report.get(
+                "site_risk_level",
+                "Low"
+            )
+        )
+
+        site_risk_score = (
+            site_report.get(
+                "site_risk_score",
+                0
+            )
+        )
+
+        hazards = site_report.get(
+            "hazards",
+            []
+        )
+
+        safety_actions = (
+            worker_protection_report.get(
+                "recommended_actions",
+                []
+            )
+        )
+
+        site_actions = (
+            site_report.get(
+                "recommended_actions",
+                []
+            )
+        )
+
+        # ----------------------------------------------------
+        # PPE COUNTS
+        # ----------------------------------------------------
 
         current_violations = {
             "NO-Hardhat": 0,
@@ -135,117 +364,39 @@ class SafetyVideoProcessor(VideoProcessorBase):
             "NO-Safety Vest": 0,
         }
 
-        total_detections = 0
+        for item in violations:
 
+            label = item.get("label")
+
+            confidence = float(
+                item.get("confidence", 0)
+            )
+
+            if (
+                label in current_violations
+                and confidence >= 0.50
+            ):
+
+                current_violations[label] += 1
 
         # ----------------------------------------------------
-        # Process detections
+        # TOTAL DETECTIONS
         # ----------------------------------------------------
 
-        for result in results:
+        total_detections = len(detections)
 
-            if result.boxes is None:
-                continue
+        # ----------------------------------------------------
+        # STATUS
+        # ----------------------------------------------------
 
-            for box in result.boxes:
+        site_status = safety_report.get(
+            "status",
+            "SAFE"
+        ).upper()
 
-                class_id = int(box.cls[0])
-
-                confidence = float(box.conf[0])
-
-                if confidence < 0.50:
-                    continue
-
-                label = result.names[class_id]
-
-                total_detections += 1
-
-
-                # --------------------------------------------
-                # Count workers
-                # --------------------------------------------
-
-                if label == "Person":
-                    workers_detected += 1
-
-
-                # --------------------------------------------
-                # Count PPE violations
-                # --------------------------------------------
-
-                if label in current_violations:
-
-                    current_violations[label] += 1
-
-
-                # --------------------------------------------
-                # Bounding box
-                # --------------------------------------------
-
-                x1, y1, x2, y2 = map(
-                    int,
-                    box.xyxy[0]
-                )
-
-
-                # Violation = red
-                # Normal detection = green
-
-                if label in current_violations:
-
-                    box_color = (0, 0, 255)
-
-                else:
-
-                    box_color = (0, 255, 0)
-
-
-                cv2.rectangle(
-                    image,
-                    (x1, y1),
-                    (x2, y2),
-                    box_color,
-                    2,
-                )
-
-
-                # --------------------------------------------
-                # Detection label
-                # --------------------------------------------
-
-                text = f"{label} {confidence:.2f}"
-
-                cv2.putText(
-                    image,
-                    text,
-                    (x1, max(y1 - 10, 20)),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.6,
-                    box_color,
-                    2,
-                )
-
-
-        # ====================================================
-        # DETERMINE SITE STATUS
-        # ====================================================
-
-        total_violations = sum(
-            current_violations.values()
-        )
-
-        if total_violations > 0:
-
-            site_status = "UNSAFE"
-
-        else:
-
-            site_status = "SAFE"
-
-
-        # ====================================================
+        # ----------------------------------------------------
         # UPDATE SHARED STATE
-        # ====================================================
+        # ----------------------------------------------------
 
         with monitoring_state.lock:
 
@@ -265,71 +416,223 @@ class SafetyVideoProcessor(VideoProcessorBase):
                 site_status
             )
 
+            monitoring_state.worker_protection_level = (
+                protection_level
+            )
+
+            monitoring_state.safety_score = (
+                safety_score
+            )
+
+            monitoring_state.confirmed_violations = list(
+                confirmed_violations
+            )
+
+            monitoring_state.safety_actions = list(
+                safety_actions
+            )
+
+            monitoring_state.site_risk_level = (
+                site_risk_level
+            )
+
+            monitoring_state.site_risk_score = (
+                site_risk_score
+            )
+
+            monitoring_state.hazards = list(
+                hazards
+            )
+
+            monitoring_state.site_actions = list(
+                site_actions
+            )
+
+            monitoring_state.safety_report = (
+                dict(safety_report)
+            )
+
+            monitoring_state.worker_protection_report = (
+                dict(worker_protection_report)
+            )
+
+            monitoring_state.site_report = (
+                dict(site_report)
+            )
 
         # ====================================================
-        # DRAW SITE STATUS ON VIDEO
+        # DRAW DETECTION BOXES
+        # ====================================================
+
+        for item in detections:
+
+            label = item.get(
+                "label",
+                "Unknown"
+            )
+
+            confidence = float(
+                item.get(
+                    "confidence",
+                    0
+                )
+            )
+
+            box = item.get("box")
+
+            if not box:
+                continue
+
+            x1, y1, x2, y2 = map(
+                int,
+                box
+            )
+
+            # PPE violation = RED
+            if label in current_violations:
+
+                box_color = (
+                    0,
+                    0,
+                    255
+                )
+
+            # Normal detection = GREEN
+            else:
+
+                box_color = (
+                    0,
+                    255,
+                    0
+                )
+
+            cv2.rectangle(
+                image,
+                (x1, y1),
+                (x2, y2),
+                box_color,
+                2,
+            )
+
+            text = (
+                f"{label} "
+                f"{confidence:.2f}"
+            )
+
+            cv2.putText(
+                image,
+                text,
+                (
+                    x1,
+                    max(
+                        y1 - 10,
+                        20
+                    )
+                ),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.6,
+                box_color,
+                2,
+            )
+
+        # ====================================================
+        # SITE STATUS
         # ====================================================
 
         if site_status == "UNSAFE":
 
-            status_color = (0, 0, 255)
+            status_color = (
+                0,
+                0,
+                255
+            )
 
         else:
 
-            status_color = (0, 255, 0)
-
-
-        # Status background
+            status_color = (
+                0,
+                255,
+                0
+            )
 
         cv2.rectangle(
             image,
             (10, 10),
-            (360, 75),
+            (470, 80),
             (0, 0, 0),
             -1,
         )
 
-
-        # Status text
-
         cv2.putText(
             image,
             f"SITE STATUS: {site_status}",
-            (20, 52),
+            (20, 55),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.85,
             status_color,
             2,
         )
 
+        # ====================================================
+        # SITE RISK OVERLAY
+        # ====================================================
+
+        cv2.rectangle(
+            image,
+            (10, 95),
+            (470, 155),
+            (0, 0, 0),
+            -1,
+        )
+
+        cv2.putText(
+            image,
+            (
+                f"SITE RISK: "
+                f"{site_risk_level} "
+                f"({site_risk_score}/100)"
+            ),
+            (20, 135),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.65,
+            status_color,
+            2,
+        )
 
         # ====================================================
-        # VIOLATION WARNING ON VIDEO
+        # PPE WARNING
         # ====================================================
+
+        total_violations = sum(
+            current_violations.values()
+        )
 
         if total_violations > 0:
 
             cv2.rectangle(
                 image,
-                (10, 90),
-                (450, 145),
+                (10, 170),
+                (520, 230),
                 (0, 0, 0),
                 -1,
             )
 
             cv2.putText(
                 image,
-                f"WARNING: {total_violations} PPE VIOLATION(S)",
-                (20, 125),
+                (
+                    f"WARNING: "
+                    f"{total_violations} "
+                    f"PPE VIOLATION(S)"
+                ),
+                (20, 208),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.7,
                 (0, 0, 255),
                 2,
             )
 
-
         # ====================================================
-        # RETURN PROCESSED FRAME
+        # RETURN FRAME
         # ====================================================
 
         return av.VideoFrame.from_ndarray(
@@ -339,28 +642,72 @@ class SafetyVideoProcessor(VideoProcessorBase):
 
 
 # ============================================================
+# LOAD PROJECT CONTEXT
+# ============================================================
+
+(
+    project_risk,
+    equipment_mttf,
+    weather,
+    context_available,
+) = get_project_context()
+
+
+# ============================================================
 # CAMERA SECTION
 # ============================================================
 
 st.subheader("🎥 Live Camera")
 
 st.info(
-    "Click START and allow camera access when your browser "
-    "asks for permission."
+    "Click START and allow camera access when your "
+    "browser asks for permission."
 )
 
+if context_available:
+
+    st.success(
+        f"Using latest Site Assessment context: "
+        f"Project Risk = {project_risk} | "
+        f"Equipment MTTF = {equipment_mttf:.1f} | "
+        f"Weather = {weather}"
+    )
+
+else:
+
+    st.warning(
+        "No Site Assessment result is available yet. "
+        "Live Site Risk will currently use a low-risk "
+        "baseline for project, equipment and weather. "
+        "Run Site Assessment first for complete risk analysis."
+    )
+
 
 # ============================================================
-# START WEBRTC STREAM
+# WEBRTC PROCESSOR FACTORY
 # ============================================================
 
+def processor_factory():
+
+    processor = SafetyVideoProcessor()
+
+    processor.project_risk = project_risk
+    processor.equipment_mttf = equipment_mttf
+    processor.weather = weather
+
+    return processor
+
+
+# ============================================================
+# START WEBRTC
+# ============================================================
 
 webrtc_streamer(
     key="constructai-live-monitoring",
 
     mode=WebRtcMode.SENDRECV,
 
-    video_processor_factory=SafetyVideoProcessor,
+    video_processor_factory=processor_factory,
 
     media_stream_constraints={
         "video": True,
@@ -369,8 +716,8 @@ webrtc_streamer(
 
     video_html_attrs={
         "style": {
-            "width": "800px",
-            "height": "600px",
+            "width": "600px",
+            "height": "400px",
             "object-fit": "contain",
             "margin": "0 auto",
             "display": "block",
@@ -390,133 +737,250 @@ webrtc_streamer(
 
 st.markdown("---")
 
-st.subheader("🚨 Live Safety Status")
 
+@st.fragment(run_every="1s")
+def live_safety_dashboard():
 
-with monitoring_state.lock:
+    st.subheader("🚨 Live AI Safety Intelligence")
 
-    workers_detected = (
-        monitoring_state.workers_detected
-    )
+    # ========================================================
+    # READ LATEST SHARED STATE
+    # ========================================================
 
-    violations = dict(
-        monitoring_state.violations
-    )
+    with monitoring_state.lock:
 
-    total_detections = (
-        monitoring_state.total_detections
-    )
+        workers_detected = (
+            monitoring_state.workers_detected
+        )
 
-    site_status = (
-        monitoring_state.site_status
-    )
+        violations = dict(
+            monitoring_state.violations
+        )
+
+        total_detections = (
+            monitoring_state.total_detections
+        )
+
+        site_status = (
+            monitoring_state.site_status
+        )
+
+        protection_level = (
+            monitoring_state.worker_protection_level
+        )
+
+        safety_score = (
+            monitoring_state.safety_score
+        )
+
+        confirmed_violations = list(
+            monitoring_state.confirmed_violations
+        )
+
+        safety_actions = list(
+            monitoring_state.safety_actions
+        )
+
+        site_risk_level = (
+            monitoring_state.site_risk_level
+        )
+
+        site_risk_score = (
+            monitoring_state.site_risk_score
+        )
+
+        hazards = list(
+            monitoring_state.hazards
+        )
+
+        site_actions = list(
+            monitoring_state.site_actions
+        )
+
+    # ========================================================
+    # MAIN METRICS
+    # ========================================================
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+
+        st.metric(
+            "👷 Workers",
+            workers_detected,
+        )
+
+    with col2:
+
+        total_violations = sum(
+            violations.values()
+        )
+
+        st.metric(
+            "⚠️ PPE Violations",
+            total_violations,
+        )
+
+    with col3:
+
+        st.metric(
+            "🛡️ Safety Score",
+            f"{safety_score}/100",
+        )
+
+    with col4:
+
+        st.metric(
+            "🚨 Site Risk",
+            site_risk_level,
+            f"{site_risk_score}/100",
+        )
+
+    # ========================================================
+    # AI PROTECTION ASSESSMENT
+    # ========================================================
+
+    st.markdown("### AI Protection Assessment")
+
+    col1, col2, col3, col4 = st.columns(4)
+
+    with col1:
+
+        st.metric(
+            "Worker Protection",
+            protection_level,
+        )
+
+    with col2:
+
+        st.metric(
+            "No Hardhat",
+            violations.get(
+                "NO-Hardhat",
+                0
+            ),
+        )
+
+    with col3:
+
+        st.metric(
+            "No Mask",
+            violations.get(
+                "NO-Mask",
+                0
+            ),
+        )
+
+    with col4:
+
+        st.metric(
+            "No Safety Vest",
+            violations.get(
+                "NO-Safety Vest",
+                0
+            ),
+        )
+
+    # ========================================================
+    # CONFIRMED VIOLATIONS
+    # ========================================================
+
+    if confirmed_violations:
+
+        st.subheader(
+            "❌ Confirmed PPE Violations"
+        )
+
+        for violation in confirmed_violations:
+
+            st.error(
+                f"• {violation}"
+            )
+
+    else:
+
+        st.success(
+            "✅ No confirmed PPE violations detected."
+        )
+
+    # ========================================================
+    # HAZARDS
+    # ========================================================
+
+    if hazards:
+
+        st.subheader(
+            "⚠️ Site Hazards"
+        )
+
+        for hazard in hazards:
+
+            st.warning(
+                f"• {hazard}"
+            )
+
+    # ========================================================
+    # RECOMMENDED ACTIONS
+    # ========================================================
+
+    all_actions = []
+
+    for action in safety_actions + site_actions:
+
+        if action not in all_actions:
+
+            all_actions.append(action)
+
+    if all_actions:
+
+        st.subheader(
+            "🛠️ Recommended Actions"
+        )
+
+        for action in all_actions:
+
+            st.info(
+                f"• {action}"
+            )
+
+    # ========================================================
+    # LIVE ALERT
+    # ========================================================
+
+    if site_risk_level == "High":
+
+        st.error(
+            "🚨 HIGH SITE RISK — Immediate corrective "
+            "action is recommended."
+        )
+
+    elif site_risk_level == "Medium":
+
+        st.warning(
+            "⚠️ MEDIUM SITE RISK — Review the detected "
+            "hazards and recommended actions."
+        )
+
+    elif site_status == "UNSAFE":
+
+        st.error(
+            "🚨 PPE SAFETY VIOLATION DETECTED — "
+            "Correct worker protection issues."
+        )
+
+    else:
+
+        st.success(
+            "✅ Site currently appears safe based on "
+            "the live safety assessment."
+        )
 
 
 # ============================================================
-# METRICS
+# RUN LIVE DASHBOARD
 # ============================================================
 
-col1, col2, col3, col4 = st.columns(4)
-
-
-with col1:
-
-    st.metric(
-        "Workers Detected",
-        workers_detected,
-    )
-
-
-with col2:
-
-    total_violations = sum(
-        violations.values()
-    )
-
-    st.metric(
-        "PPE Violations",
-        total_violations,
-    )
-
-
-with col3:
-
-    st.metric(
-        "Detections",
-        total_detections,
-    )
-
-
-with col4:
-
-    st.metric(
-        "Site Status",
-        site_status,
-    )
-
-
-# ============================================================
-# PPE VIOLATION BREAKDOWN
-# ============================================================
-
-st.subheader("🦺 PPE Violation Breakdown")
-
-
-col1, col2, col3 = st.columns(3)
-
-
-with col1:
-
-    st.metric(
-        "❌ No Hardhat",
-        violations.get(
-            "NO-Hardhat",
-            0
-        ),
-    )
-
-
-with col2:
-
-    st.metric(
-        "❌ No Mask",
-        violations.get(
-            "NO-Mask",
-            0
-        ),
-    )
-
-
-with col3:
-
-    st.metric(
-        "❌ No Safety Vest",
-        violations.get(
-            "NO-Safety Vest",
-            0
-        ),
-    )
-
-
-# ============================================================
-# ALERT
-# ============================================================
-
-if site_status == "UNSAFE":
-
-    st.error(
-        "🚨 SAFETY VIOLATION DETECTED — "
-        "PPE non-compliance has been detected "
-        "in the live camera feed. "
-        "Take appropriate corrective action."
-    )
-
-else:
-
-    st.success(
-        "✅ No confirmed PPE violations detected "
-        "in the current frame."
-    )
+live_safety_dashboard()
 
 
 # ============================================================
@@ -524,33 +988,43 @@ else:
 # ============================================================
 
 with st.expander(
-    "ℹ️ How Real-Time Monitoring Works"
+    "ℹ️ How the AI Monitoring Pipeline Works"
 ):
 
     st.write(
         """
-        The browser camera sends live video frames
-        to the Streamlit application through WebRTC.
+        1. The browser camera sends live video frames
+           through WebRTC.
 
-        The trained YOLO safety model processes the
-        video frames and detects construction-site
-        safety conditions.
+        2. Safety Agent processes each frame using
+           the trained YOLO model.
 
-        The system currently monitors:
+        3. Safety Intelligence Agent analyzes the
+           detected PPE violations and calculates
+           worker protection level and safety score.
 
-        • Construction workers
-        • Missing hardhats
-        • Missing masks
-        • Missing safety vests
+        4. Site Risk Agent combines the safety result
+           with project risk, equipment MTTF and
+           weather information.
 
-        Detection boxes are displayed directly on the
-        live camera feed.
+        5. The system calculates the overall site
+           risk level and generates recommended
+           corrective actions.
 
-        Red boxes indicate PPE violations.
+        Pipeline:
 
-        Green boxes indicate normal detections.
-
-        The site status becomes UNSAFE when a confirmed
-        PPE violation is detected.
+        Camera
+            ↓
+        Safety Agent
+            ↓
+        Safety Intelligence Agent
+            ↓
+        Worker Protection
+            ↓
+        Site Risk Agent
+            ↓
+        Site Risk Score
+            ↓
+        Recommended Actions
         """
     )
