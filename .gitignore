@@ -224,3 +224,5 @@ models/*.pth
 
 # YOLO training outputs
 runs/
+
+.env
