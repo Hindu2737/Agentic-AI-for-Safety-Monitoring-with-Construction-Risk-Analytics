@@ -11,11 +11,12 @@ from streamlit_webrtc import (
 )
 
 from agents.safety_agent import SafetyAgent
-from agents.safety_intelligence_agent import (
-    SafetyIntelligenceAgent,
-)
+from agents.safety_intelligence_agent import SafetyIntelligenceAgent
 from agents.site_risk_agent import SiteRiskAgent
+
 from utils.alerts import AlertManager
+from utils.email_alerts import EmailAlertManager
+from utils.database import save_live_alert
 
 
 # ============================================================
@@ -80,7 +81,7 @@ except Exception as e:
 
 
 # ============================================================
-# LOAD ALERT MANAGER
+# LOAD ALERT MANAGERS
 # ============================================================
 
 @st.cache_resource
@@ -91,7 +92,14 @@ def get_alert_manager():
     )
 
 
+@st.cache_resource
+def get_email_alert_manager():
+
+    return EmailAlertManager()
+
+
 alert_manager = get_alert_manager()
+email_alert_manager = get_email_alert_manager()
 
 
 # ============================================================
@@ -296,7 +304,7 @@ class SafetyVideoProcessor(VideoProcessorBase):
                 )
             )
 
-        except Exception as e:
+        except Exception:
 
             worker_protection_report = {
 
@@ -518,6 +526,65 @@ class SafetyVideoProcessor(VideoProcessorBase):
 
 
         # ====================================================
+        # EMAIL + DATABASE ALERT
+        # ====================================================
+
+        if alert is not None:
+
+            # ------------------------------------------------
+            # SEND EMAIL ALERT
+            # ------------------------------------------------
+
+            threading.Thread(
+                target=email_alert_manager.send_alert,
+                args=(alert,),
+                daemon=True,
+            ).start()
+
+
+            # ------------------------------------------------
+            # SAVE ALERT TO DATABASE
+            # ------------------------------------------------
+
+            try:
+
+                save_live_alert(
+                    alert=alert,
+
+                    site_risk_level=
+                        site_risk_level,
+
+                    site_risk_score=
+                        site_risk_score,
+
+                    safety_score=
+                        safety_score,
+
+                    worker_protection_level=
+                        protection_level,
+
+                    workers_detected=
+                        workers_detected,
+
+                    violations=
+                        confirmed_violations,
+
+                    hazards=
+                        hazards,
+
+                    recommended_actions=
+                        safety_actions + site_actions,
+                )
+
+            except Exception as e:
+
+                print(
+                    "Failed to save live alert "
+                    f"to database: {e}"
+                )
+
+
+        # ====================================================
         # UPDATE SHARED STATE
         # ====================================================
 
@@ -639,6 +706,7 @@ class SafetyVideoProcessor(VideoProcessorBase):
                     0,
                     255,
                 )
+
 
             # ------------------------------------------------
             # NORMAL = GREEN
@@ -881,7 +949,6 @@ def processor_factory():
 # ============================================================
 
 st.subheader("🎥 Live Camera")
-
 
 st.info(
     "Click START and allow camera access when "
@@ -1299,7 +1366,13 @@ with st.expander(
             ↓
         Alert Manager
             ↓
-        Automatic Safety Alert
+        ┌───────────────────────┐
+        │                       │
+        ↓                       ↓
+        Email Alert          SQLite
+        │                       │
+        ↓                       ↓
+        Resend              Live Alert History
 
         The system monitors:
 
@@ -1311,5 +1384,7 @@ with st.expander(
         • Overall site risk
         • Safety hazards
         • Recommended corrective actions
+        • Automatic email alerts
+        • Live safety alerts stored in the database
         """
     )
