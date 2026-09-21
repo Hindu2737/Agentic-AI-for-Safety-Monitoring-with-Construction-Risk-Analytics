@@ -12,3 +12,4 @@ reportlab
 streamlit-webrtc
 resend
 python-dotenv
+pytest
