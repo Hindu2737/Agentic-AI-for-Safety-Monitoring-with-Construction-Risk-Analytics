@@ -1,1137 +1,333 @@
 import streamlit as st
-
 from main import run_analysis
 from reporting.risk_summary import create_risk_summary
 from reporting.recommendations import generate_recommendations
 from reporting.pdf_generator import generate_pdf_report
 
-
-# ============================================================
-# PAGE CONFIGURATION
-# ============================================================
-
 st.set_page_config(
     page_title="ConstructAI | Executive Dashboard",
     page_icon="🏗️",
     layout="wide",
+    initial_sidebar_state="expanded",
 )
 
-
-# ============================================================
-# PAGE HEADER
-# ============================================================
-
-st.title("🏗️ ConstructAI Executive Dashboard")
-st.caption(
-    "Agentic Construction Risk Intelligence Platform"
-)
-
-st.markdown(
-    """
-    Monitor project risk, site safety, worker protection,
-    equipment reliability, weather conditions, compliance,
-    and insurance risk from one dashboard.
-    """
-)
-
-
-# ============================================================
-# SESSION STATE
-# ============================================================
+# ---------- Professional UI ----------
+st.markdown("""
+<style>
+.block-container{max-width:1500px;padding-top:1.5rem;padding-bottom:3rem}
+.hero{padding:1.7rem 2rem;border-radius:18px;background:linear-gradient(135deg,#0f172a,#1e293b);color:white;margin-bottom:1rem}
+.hero h1{margin:0;font-size:2.25rem;font-weight:800}
+.hero p{margin:.35rem 0 0;color:#cbd5e1}
+.section{font-size:1.35rem;font-weight:750;margin:1.5rem 0 .8rem}
+.card{border:1px solid rgba(128,128,128,.20);border-radius:16px;padding:1.1rem;background:rgba(128,128,128,.045);height:100%}
+.big{font-size:3rem;font-weight:850;line-height:1}
+.label{font-size:.82rem;opacity:.68}
+.sub{font-size:.85rem;opacity:.72;margin-top:.35rem}
+.alert{border-radius:12px;padding:.8rem 1rem;margin:.45rem 0;border:1px solid rgba(239,68,68,.25);background:rgba(239,68,68,.07)}
+.ok{border-radius:12px;padding:.9rem 1rem;border:1px solid rgba(34,197,94,.25);background:rgba(34,197,94,.07)}
+.agent{padding:.65rem .8rem;border-bottom:1px solid rgba(128,128,128,.15)}
+</style>
+""", unsafe_allow_html=True)
 
 if "dashboard_analysis_result" not in st.session_state:
     st.session_state["dashboard_analysis_result"] = None
 
+# ---------- Header ----------
+st.markdown("""
+<div class="hero">
+<h1>🏗️ ConstructAI</h1>
+<p>Executive Construction Risk Intelligence Platform</p>
+</div>
+""", unsafe_allow_html=True)
 
-# ============================================================
-# ANALYSIS FUNCTION
-# ============================================================
+h1, h2, h3 = st.columns([5,2,2])
+with h1:
+    st.caption("AI-powered project, safety, compliance and operational intelligence")
+with h2:
+    st.metric("AI Agents", "8 / 8", "Active")
+with h3:
+    st.metric("System", "Operational")
 
 @st.cache_data(ttl=300)
 def get_analysis_results():
-    """
-    Runs the complete Construction-AI analysis pipeline.
-
-    The actual agent execution is handled by main.py.
-    """
-
     return run_analysis()
 
-
-# ============================================================
-# RUN ANALYSIS
-# ============================================================
-
 try:
-
     if st.session_state["dashboard_analysis_result"] is None:
-
-        with st.spinner(
-            "Running Construction-AI intelligence agents..."
-        ):
+        with st.spinner("Running Construction-AI intelligence agents..."):
             results = get_analysis_results()
-
-        st.session_state[
-            "dashboard_analysis_result"
-        ] = results
-
+        st.session_state["dashboard_analysis_result"] = results
     else:
-
-        results = st.session_state[
-            "dashboard_analysis_result"
-        ]
-
-
+        results = st.session_state["dashboard_analysis_result"]
 except Exception as e:
-
-    st.error(
-        "Unable to run the Construction-AI analysis pipeline."
-    )
-
+    st.error("Unable to run the Construction-AI analysis pipeline.")
     st.exception(e)
-
     st.stop()
-
-
-# ============================================================
-# SAFETY CHECK
-# ============================================================
 
 if not isinstance(results, dict):
-
-    st.error(
-        "The analysis pipeline did not return a valid result."
-    )
-
+    st.error("The analysis pipeline did not return a valid result.")
     st.stop()
 
-
-# ============================================================
-# CREATE RISK SUMMARY
-# ============================================================
-
 try:
-
     summary = create_risk_summary(results)
-
 except Exception as e:
-
-    st.error(
-        "Unable to create the risk summary."
-    )
-
+    st.error("Unable to create the risk summary.")
     st.exception(e)
-
     st.stop()
 
+project_risk = results.get("project_risk", "Unknown")
+equipment_mttf = results.get("equipment_mttf", 0)
+weather = results.get("weather_prediction", results.get("weather", "Unknown"))
+safety = results.get("safety_report", {})
+protection = results.get("worker_protection_report", {})
+site = results.get("site_report", {})
+compliance = results.get("compliance_report", {})
+insurance = results.get("insurance_report", {})
 
-# ============================================================
-# EXTRACT REPORTS SAFELY
-# ============================================================
-
-project_risk = results.get(
-    "project_risk",
-    "Unknown",
-)
-
-equipment_mttf = results.get(
-    "equipment_mttf",
-    0,
-)
-
-weather_prediction = results.get(
-    "weather_prediction",
-    results.get(
-        "weather",
-        "Unknown",
-    ),
-)
-
-safety_report = results.get(
-    "safety_report",
-    {},
-)
-
-worker_protection_report = results.get(
-    "worker_protection_report",
-    {},
-)
-
-site_report = results.get(
-    "site_report",
-    {},
-)
-
-compliance_report = results.get(
-    "compliance_report",
-    {},
-)
-
-insurance_report = results.get(
-    "insurance_report",
-    {},
-)
-
-
-# ============================================================
-# RISK VALUES
-# ============================================================
-
-site_risk_score = site_report.get(
-    "site_risk_score",
-    0,
-)
-
-site_risk_level = site_report.get(
-    "site_risk_level",
-    "Unknown",
-)
-
-
-# SafetyIntelligenceAgent produces a SAFETY PROTECTION score.
-# Higher = better.
-# Therefore risk = 100 - protection score.
-
-safety_protection_score = worker_protection_report.get(
-    "safety_score",
-    100,
-)
-
-try:
-    safety_protection_score = float(
-        safety_protection_score
-    )
-except (
-    TypeError,
-    ValueError,
-):
-    safety_protection_score = 100
-
-
-safety_risk_score = max(
-    0,
-    min(
-        100,
-        100 - safety_protection_score,
-    ),
-)
-
-
-# ============================================================
-# DISPLAY OVERALL RISK
-# ============================================================
-
-st.markdown("---")
-
-st.subheader("🎯 Overall Risk Overview")
-
-
-overall_scores = [
-    site_risk_score,
-    safety_risk_score,
-]
-
-insurance_score = insurance_report.get(
-    "insurance_risk_score",
-    0,
-)
-
-try:
-    insurance_score = float(
-        insurance_score
-    )
-except (
-    TypeError,
-    ValueError,
-):
-    insurance_score = 0
-
-overall_scores.append(
-    insurance_score
-)
-
-overall_risk_score = round(
-    sum(overall_scores) / len(overall_scores)
-)
-
-
-if overall_risk_score >= 70:
-
-    overall_risk_level = "High"
-
-elif overall_risk_score >= 40:
-
-    overall_risk_level = "Medium"
-
-else:
-
-    overall_risk_level = "Low"
-
-
-# ============================================================
-# TOP METRICS
-# ============================================================
-
-col1, col2, col3, col4 = st.columns(4)
-
-
-with col1:
-
-    st.metric(
-        "Overall Risk",
-        f"{overall_risk_score}/100",
-        overall_risk_level,
-    )
-
-
-with col2:
-
-    st.metric(
-        "Project Risk",
-        str(project_risk),
-    )
-
-
-with col3:
-
-    st.metric(
-        "Site Risk",
-        f"{site_risk_score}/100",
-        site_risk_level,
-    )
-
-
-with col4:
-
-    st.metric(
-        "Safety Risk",
-        f"{int(safety_risk_score)}/100",
-    )
-
-
-# ============================================================
-# SECONDARY METRICS
-# ============================================================
-
-st.markdown("### 📊 Operational Intelligence")
-
-col1, col2, col3, col4 = st.columns(4)
-
-
-with col1:
-
-    st.metric(
-        "Weather",
-        str(weather_prediction),
-    )
-
-
-with col2:
-
+def number(value, default=0):
     try:
-        mttf_display = f"{float(equipment_mttf):.1f}"
+        return float(value)
+    except (TypeError, ValueError):
+        return default
 
-    except (
-        TypeError,
-        ValueError,
-    ):
-        mttf_display = "N/A"
+site_score = max(0, min(100, number(site.get("site_risk_score"))))
+protection_score = max(0, min(100, number(protection.get("safety_score"), 100)))
+safety_risk = 100 - protection_score
+insurance_score = max(0, min(100, number(insurance.get("insurance_risk_score"))))
+compliance_score = number(compliance.get("compliance_score"))
+overall = round((site_score + safety_risk + insurance_score) / 3)
 
-    st.metric(
-        "Equipment MTTF",
-        mttf_display,
-    )
+if overall >= 70:
+    overall_level = "High"
+elif overall >= 40:
+    overall_level = "Medium"
+else:
+    overall_level = "Low"
 
+violations = protection.get("confirmed_violations", [])
+hazards = site.get("hazards", [])
+workers = protection.get("workers_detected", 0)
+compliance_status = compliance.get("compliance_status", "Unknown")
+insurance_level = insurance.get("insurance_risk_level", "Unknown")
 
-with col3:
+# ---------- Executive risk ----------
+st.markdown('<div class="section">🎯 Executive Risk Overview</div>', unsafe_allow_html=True)
 
-    compliance_status = compliance_report.get(
-        "compliance_status",
-        "Unknown",
-    )
+a,b,c = st.columns([1.2,1,1])
+with a:
+    st.markdown(f"""
+    <div class="card">
+    <div class="label">OVERALL SITE RISK</div>
+    <div class="big">{overall}<span style="font-size:1.1rem">/100</span></div>
+    <div><b>{overall_level} Risk</b></div>
+    <div class="sub">Combined site, worker-safety and insurance risk indicators</div>
+    </div>""", unsafe_allow_html=True)
+    st.progress(overall)
 
-    compliance_score = compliance_report.get(
-        "compliance_score",
-        0,
-    )
+with b:
+    st.markdown(f"""
+    <div class="card">
+    <div class="label">PROJECT RISK</div>
+    <div class="big">{project_risk}</div>
+    <div class="sub">Predicted by Project Agent</div>
+    </div>""", unsafe_allow_html=True)
 
-    st.metric(
-        "Compliance",
-        str(compliance_status),
-        f"{compliance_score}/100",
-    )
+with c:
+    st.markdown(f"""
+    <div class="card">
+    <div class="label">WORKER PROTECTION</div>
+    <div class="big">{int(protection_score)}<span style="font-size:1.1rem">/100</span></div>
+    <div><b>{protection.get("worker_protection_level","Unknown")}</b></div>
+    <div class="sub">{workers} worker(s) detected • {len(violations)} confirmed PPE violation(s)</div>
+    </div>""", unsafe_allow_html=True)
+    st.progress(int(protection_score))
 
+# ---------- KPI strip ----------
+st.markdown('<div class="section">📊 Operational Intelligence</div>', unsafe_allow_html=True)
+k1,k2,k3,k4,k5 = st.columns(5)
+k1.metric("🏗️ Site Risk", f"{int(site_score)}/100", site.get("site_risk_level","Unknown"))
+k2.metric("🦺 Safety Risk", f"{int(safety_risk)}/100")
+k3.metric("🛡️ Compliance", f"{int(compliance_score)}/100", compliance_status)
+k4.metric("🏦 Insurance", f"{int(insurance_score)}/100", insurance_level)
+k5.metric("⚙️ Equipment MTTF", f"{number(equipment_mttf):.1f}")
 
-with col4:
-
-    insurance_level = insurance_report.get(
-        "insurance_risk_level",
-        "Unknown",
-    )
-
-    st.metric(
-        "Insurance Risk",
-        str(insurance_level),
-    )
-
-
-# ============================================================
-# RISK BREAKDOWN
-# ============================================================
-
-st.markdown("---")
-
-st.subheader("📈 Risk Breakdown")
-
-
-col1, col2, col3 = st.columns(3)
-
-
-with col1:
-
-    st.markdown("#### 🏗️ Site Risk")
-
-    st.progress(
-        int(
-            max(
-                0,
-                min(
-                    100,
-                    site_risk_score,
-                ),
-            )
-        )
-    )
-
-    st.write(
-        f"**Level:** {site_risk_level}"
-    )
-
-    st.write(
-        f"**Score:** {site_risk_score}/100"
-    )
-
-
-with col2:
-
-    st.markdown("#### 🦺 Worker Safety Risk")
-
-    st.progress(
-        int(safety_risk_score)
-    )
-
-    protection_level = worker_protection_report.get(
-        "worker_protection_level",
-        "Unknown",
-    )
-
-    st.write(
-        f"**Protection Level:** {protection_level}"
-    )
-
-    st.write(
-        f"**Risk Score:** {int(safety_risk_score)}/100"
-    )
-
-
-with col3:
-
-    st.markdown("#### 🛡️ Insurance Risk")
-
-    st.progress(
-        int(
-            max(
-                0,
-                min(
-                    100,
-                    insurance_score,
-                ),
-            )
-        )
-    )
-
-    st.write(
-        f"**Level:** {insurance_level}"
-    )
-
-    st.write(
-        f"**Score:** {int(insurance_score)}/100"
-    )
-
-
-# ============================================================
-# ALERTS
-# ============================================================
-
-st.markdown("---")
-
-st.subheader("🚨 Active Risk Alerts")
-
-
-alerts = []
-
-
-# Project risk alert
-if str(project_risk).lower() == "high":
-
-    alerts.append(
-        "🔴 High project risk detected."
-    )
-
-elif str(project_risk).lower() == "medium":
-
-    alerts.append(
-        "🟠 Medium project risk detected."
-    )
-
-
-# Site risk alert
-if site_risk_score >= 60:
-
-    alerts.append(
-        "🔴 Site risk is high. Additional inspection is recommended."
-    )
-
-elif site_risk_score >= 30:
-
-    alerts.append(
-        "🟠 Site risk requires attention."
-    )
-
-
-# Safety alert
-violations = worker_protection_report.get(
-    "confirmed_violations",
-    [],
-)
-
-if violations:
-
-    for violation in violations:
-
-        alerts.append(
-            f"🔴 Worker safety violation detected: {violation}"
-        )
-
-
-# Weather alert
-bad_weather = {
-    "Rain",
-    "Light Rain",
-    "Heavy Rain",
-    "Windy",
-    "Overcast",
+# ---------- Risk distribution ----------
+st.markdown('<div class="section">📈 Risk Distribution</div>', unsafe_allow_html=True)
+chart_data = {
+    "Site Risk": int(site_score),
+    "Safety Risk": int(safety_risk),
+    "Insurance Risk": int(insurance_score),
 }
+st.bar_chart(chart_data, horizontal=True, height=230)
 
-if weather_prediction in bad_weather:
-
-    alerts.append(
-        f"🟠 Weather-related risk detected: "
-        f"{weather_prediction}"
-    )
-
-
-# Equipment alert
-try:
-
-    mttf_value = float(
-        equipment_mttf
-    )
-
-    if mttf_value < 100:
-
-        alerts.append(
-            "🔴 Equipment may fail soon. Immediate inspection recommended."
-        )
-
-    elif mttf_value < 300:
-
-        alerts.append(
-            "🟠 Equipment maintenance should be scheduled."
-        )
-
-except (
-    TypeError,
-    ValueError,
-):
-    pass
-
-
-# Compliance alert
+# ---------- Attention ----------
+alerts = []
+if str(project_risk).lower() == "high":
+    alerts.append("🔴 High project risk detected.")
+elif str(project_risk).lower() == "medium":
+    alerts.append("🟠 Medium project risk detected.")
+if site_score >= 60:
+    alerts.append("🔴 Site risk is high. Additional inspection is recommended.")
+elif site_score >= 30:
+    alerts.append("🟠 Site risk requires attention.")
+for v in violations:
+    alerts.append(f"🔴 PPE violation detected: {v}")
+if weather in {"Rain","Light Rain","Heavy Rain","Windy","Overcast"}:
+    alerts.append(f"🟠 Weather-related risk detected: {weather}")
+if number(equipment_mttf) < 100:
+    alerts.append("🔴 Equipment may fail soon. Immediate inspection recommended.")
+elif number(equipment_mttf) < 300:
+    alerts.append("🟠 Equipment maintenance should be scheduled.")
 if compliance_status != "Compliant":
-
-    alerts.append(
-        f"🔴 Compliance status: {compliance_status}"
-    )
-
-
-# Insurance alert
+    alerts.append(f"🔴 Compliance status: {compliance_status}")
 if insurance_level == "High":
+    alerts.append("🔴 High insurance risk indicator detected.")
 
-    alerts.append(
-        "🔴 High insurance risk indicator detected."
-    )
-
-
+st.markdown('<div class="section">🚨 Critical Attention</div>', unsafe_allow_html=True)
 if alerts:
-
     for alert in alerts:
-
-        st.warning(alert)
-
+        st.markdown(f'<div class="alert">{alert}</div>', unsafe_allow_html=True)
 else:
+    st.markdown('<div class="ok">✅ No major risk alerts detected.</div>', unsafe_allow_html=True)
 
-    st.success(
-        "✅ No major risk alerts detected."
-    )
+# ---------- Safety ----------
+st.markdown('<div class="section">🦺 Site Safety Intelligence</div>', unsafe_allow_html=True)
+s1,s2,s3 = st.columns(3)
+s1.metric("Workers Detected", workers)
+s2.metric("PPE Violations", len(violations))
+s3.metric("Protection Score", f"{int(protection_score)}/100")
 
-
-# ============================================================
-# HAZARDS & FINDINGS
-# ============================================================
-
-st.markdown("---")
-
-col1, col2 = st.columns(2)
-
-
-with col1:
-
-    st.subheader("⚠️ Site Hazards")
-
-    hazards = site_report.get(
-        "hazards",
-        [],
-    )
-
-    if hazards:
-
-        for hazard in hazards:
-
-            st.warning(
-                hazard
-            )
-
+d1,d2 = st.columns(2)
+with d1:
+    st.markdown("#### Computer Vision Detections")
+    detections = safety.get("detections", [])
+    if detections:
+        for item in detections:
+            label = item.get("label","Unknown")
+            confidence = number(item.get("confidence")) * 100
+            st.write(f"**{label}** — {confidence:.1f}% confidence")
     else:
-
-        st.success(
-            "No site hazards identified."
-        )
-
-
-with col2:
-
-    st.subheader("🦺 Safety Findings")
-
+        st.success("No detections recorded.")
+with d2:
+    st.markdown("#### PPE Findings")
     if violations:
-
-        for violation in violations:
-
-            st.error(
-                violation
-            )
-
+        for v in violations:
+            st.error(v)
     else:
+        st.success("No confirmed PPE violations.")
 
-        st.success(
-            "No confirmed PPE violations."
-        )
+# ---------- Hazards/actions ----------
+st.markdown('<div class="section">⚠️ Site Hazards & Corrective Actions</div>', unsafe_allow_html=True)
+hcol, acol = st.columns(2)
+with hcol:
+    st.markdown("#### Identified Hazards")
+    if hazards:
+        for h in hazards:
+            st.warning(h)
+    else:
+        st.success("No site hazards identified.")
+with acol:
+    st.markdown("#### Recommended Actions")
+    actions = []
+    actions.extend(site.get("recommended_actions", []))
+    actions.extend(protection.get("recommended_actions", []))
+    actions.extend(compliance.get("recommended_actions", []))
+    if insurance.get("recommendation"):
+        actions.append(insurance["recommendation"])
+    actions = list(dict.fromkeys(actions))
+    if actions:
+        for i, action in enumerate(actions, 1):
+            st.info(f"**{i}.** {action}")
+    else:
+        st.success("Continue routine monitoring and preventive controls.")
 
-
-# ============================================================
-# RECOMMENDED ACTIONS
-# ============================================================
-
-st.markdown("---")
-
-st.subheader("💡 Recommended Actions")
-
-
-recommended_actions = []
-
-
-# Site actions
-recommended_actions.extend(
-    site_report.get(
-        "recommended_actions",
-        [],
-    )
-)
-
-
-# Worker protection actions
-recommended_actions.extend(
-    worker_protection_report.get(
-        "recommended_actions",
-        [],
-    )
-)
-
-
-# Compliance actions
-recommended_actions.extend(
-    compliance_report.get(
-        "recommended_actions",
-        [],
-    )
-)
-
-
-# Insurance recommendation
-insurance_recommendation = insurance_report.get(
-    "recommendation"
-)
-
-if insurance_recommendation:
-
-    recommended_actions.append(
-        insurance_recommendation
-    )
-
-
-# Remove duplicates
-recommended_actions = list(
-    dict.fromkeys(
-        recommended_actions
-    )
-)
-
-
-if recommended_actions:
-
-    for index, action in enumerate(
-        recommended_actions,
-        start=1,
-    ):
-
-        st.write(
-            f"**{index}.** {action}"
-        )
-
-else:
-
-    st.success(
-        "Continue routine monitoring and preventive safety controls."
-    )
-
-
-# ============================================================
-# COMPLIANCE & INSURANCE
-# ============================================================
-
-st.markdown("---")
-
-st.subheader("🛡️ Compliance & Insurance Intelligence")
-
-
-col1, col2 = st.columns(2)
-
-
-with col1:
-
-    st.markdown("### Compliance")
-
-    st.write(
-        f"**Status:** {compliance_status}"
-    )
-
-    st.write(
-        f"**Score:** {compliance_score}/100"
-    )
-
-    findings = compliance_report.get(
-        "findings",
-        [],
-    )
-
+# ---------- Compliance / insurance ----------
+st.markdown('<div class="section">🛡️ Compliance & Insurance Intelligence</div>', unsafe_allow_html=True)
+cc, ic = st.columns(2)
+with cc:
+    st.markdown("#### Compliance")
+    st.metric("Compliance Score", f"{int(compliance_score)}/100", compliance_status)
+    findings = compliance.get("findings", [])
     if findings:
-
-        for finding in findings:
-
-            violation = finding.get(
-                "violation",
-                "Unknown",
-            )
-
-            severity = finding.get(
-                "severity",
-                "Unknown",
-            )
-
-            requirement = finding.get(
-                "requirement",
-                "",
-            )
-
-            action = finding.get(
-                "action",
-                "",
-            )
-
-            st.markdown(
-                f"""
-                **{violation}**
-
-                - Severity: `{severity}`
-                - Requirement: {requirement}
-                - Action: {action}
-                """
-            )
-
+        for f in findings:
+            with st.container(border=True):
+                st.markdown(f"**{f.get('violation','Unknown')}**")
+                st.caption(f"Severity: {f.get('severity','Unknown')}")
+                st.write(f"Requirement: {f.get('requirement','')}")
+                st.write(f"Action: {f.get('action','')}")
     else:
+        st.success("No compliance findings.")
+with ic:
+    st.markdown("#### Insurance Risk")
+    st.metric("Insurance Risk", f"{int(insurance_score)}/100", insurance_level)
+    st.info(insurance.get("recommendation","No recommendation available."))
+    if insurance.get("note"):
+        st.caption(insurance["note"])
 
-        st.success(
-            "No compliance findings."
-        )
+# ---------- Agent network ----------
+st.markdown('<div class="section">🤖 AI Agent Network</div>', unsafe_allow_html=True)
+agents = [
+    ("Project Agent","Project risk prediction"),
+    ("Resource Agent","Equipment reliability / MTTF"),
+    ("Weather Agent","Weather risk prediction"),
+    ("Safety Agent","Computer vision PPE detection"),
+    ("Safety Intelligence Agent","Worker protection intelligence"),
+    ("Site Risk Agent","Site-level risk assessment"),
+    ("Compliance Agent","Safety compliance assessment"),
+    ("Insurance Intelligence Agent","Insurance risk intelligence"),
+]
+for name, desc in agents:
+    x,y,z = st.columns([2.2,5.5,1])
+    x.markdown(f"**{name}**")
+    y.caption(desc)
+    z.success("Active")
 
-
-with col2:
-
-    st.markdown("### Insurance Risk")
-
-    st.write(
-        f"**Risk Level:** {insurance_level}"
-    )
-
-    st.write(
-        f"**Risk Score:** {int(insurance_score)}/100"
-    )
-
-    recommendation = insurance_report.get(
-        "recommendation",
-        "No recommendation available.",
-    )
-
-    st.info(
-        recommendation
-    )
-
-    note = insurance_report.get(
-        "note"
-    )
-
-    if note:
-
-        st.caption(
-            note
-        )
-
-
-# ============================================================
-# SAFETY INTELLIGENCE
-# ============================================================
-
-st.markdown("---")
-
-st.subheader("🧠 Safety Intelligence")
-
-
-col1, col2, col3 = st.columns(3)
-
-
-with col1:
-
-    workers_detected = worker_protection_report.get(
-        "workers_detected",
-        0,
-    )
-
-    st.metric(
-        "Workers Detected",
-        workers_detected,
-    )
-
-
-with col2:
-
-    st.metric(
-        "Confirmed Violations",
-        len(violations),
-    )
-
-
-with col3:
-
-    st.metric(
-        "Protection Score",
-        f"{int(safety_protection_score)}/100",
-    )
-
-
-# ============================================================
-# SAFETY DETECTIONS
-# ============================================================
-
-detections = safety_report.get(
-    "detections",
-    [],
-)
-
-if detections:
-
-    with st.expander(
-        "🔍 View Computer Vision Detections"
-    ):
-
-        for detection in detections:
-
-            label = detection.get(
-                "label",
-                "Unknown",
-            )
-
-            confidence = detection.get(
-                "confidence",
-                0,
-            )
-
-            st.write(
-                f"**{label}** — "
-                f"{float(confidence) * 100:.1f}% confidence"
-            )
-
-
-# ============================================================
-# REPORTING INTELLIGENCE
-# ============================================================
-
-st.markdown("---")
-
-st.subheader("📄 Reporting Intelligence")
-
-st.write(
-    """
-    Generate an enterprise-style Construction-AI
-    risk intelligence report containing the executive
-    summary, risk scores, safety findings, compliance
-    findings, insurance intelligence and recommended
-    actions.
-    """
-)
-
-
-# ============================================================
-# GENERATE PDF REPORT
-# ============================================================
-
-if st.button(
-    "📄 Generate Risk Report",
-    use_container_width=True,
-):
-
-    with st.spinner(
-        "Generating Construction-AI risk report..."
-    ):
-
+# ---------- Reporting ----------
+st.markdown('<div class="section">📄 Reporting Intelligence</div>', unsafe_allow_html=True)
+if st.button("📄 Generate Risk Report", use_container_width=True):
+    with st.spinner("Generating Construction-AI risk report..."):
         try:
-
-            # Generate recommendations
-            recommendations = generate_recommendations(
-                results
-            )
-
-            # Generate PDF
+            recommendations = generate_recommendations(results)
             pdf_file = generate_pdf_report(
                 summary=summary,
                 results=results,
                 recommendations=recommendations,
             )
-
-            st.success(
-                "✅ Risk report generated successfully."
-            )
-
+            st.success("✅ Risk report generated successfully.")
             st.download_button(
-                label="⬇️ Download Risk Report",
+                "⬇️ Download Risk Report",
                 data=pdf_file.getvalue(),
-                file_name=(
-                    "ConstructAI_Risk_Intelligence_Report.pdf"
-                ),
+                file_name="ConstructAI_Risk_Intelligence_Report.pdf",
                 mime="application/pdf",
                 use_container_width=True,
             )
-
         except Exception as e:
-
-            st.error(
-                "❌ Unable to generate the risk report."
-            )
-
+            st.error("❌ Unable to generate the risk report.")
             st.exception(e)
 
+# ---------- Detailed output ----------
+with st.expander("🔎 Detailed Agent Output"):
+    tabs = st.tabs([
+        "Project","Resource","Weather","Safety",
+        "Worker Protection","Site Risk","Compliance","Insurance"
+    ])
+    outputs = [
+        {"project_risk": project_risk},
+        {"equipment_mttf": equipment_mttf},
+        {"weather_prediction": weather},
+        safety,
+        protection,
+        site,
+        compliance,
+        insurance,
+    ]
+    for tab, output in zip(tabs, outputs):
+        with tab:
+            st.json(output)
 
-# ============================================================
-# AGENT STATUS
-# ============================================================
-
+# ---------- Refresh ----------
 st.markdown("---")
-
-st.subheader("🤖 Agent Status")
-
-
-agents = [
-    (
-        "Project Agent",
-        "Project risk prediction",
-    ),
-    (
-        "Resource Agent",
-        "Equipment reliability / MTTF",
-    ),
-    (
-        "Weather Agent",
-        "Weather risk prediction",
-    ),
-    (
-        "Safety Agent",
-        "Computer vision PPE detection",
-    ),
-    (
-        "Safety Intelligence Agent",
-        "Worker protection intelligence",
-    ),
-    (
-        "Site Risk Agent",
-        "Site-level risk assessment",
-    ),
-    (
-        "Compliance Agent",
-        "Safety compliance assessment",
-    ),
-    (
-        "Insurance Intelligence Agent",
-        "Insurance risk intelligence",
-    ),
-]
-
-
-for agent_name, description in agents:
-
-    col1, col2, col3 = st.columns(
-        [2, 5, 1]
-    )
-
-    with col1:
-
-        st.write(
-            f"**{agent_name}**"
-        )
-
-    with col2:
-
-        st.write(
-            description
-        )
-
-    with col3:
-
-        st.success(
-            "Active"
-        )
-
-
-# ============================================================
-# DETAILED AGENT OUTPUT
-# ============================================================
-
-st.markdown("---")
-
-st.subheader("🔎 Detailed Agent Output")
-
-
-with st.expander(
-    "Project Agent"
-):
-
-    st.json(
-        {
-            "project_risk": project_risk
-        }
-    )
-
-
-with st.expander(
-    "Resource Agent"
-):
-
-    st.json(
-        {
-            "equipment_mttf": equipment_mttf
-        }
-    )
-
-
-with st.expander(
-    "Weather Agent"
-):
-
-    st.json(
-        {
-            "weather_prediction": weather_prediction
-        }
-    )
-
-
-with st.expander(
-    "Safety Agent"
-):
-
-    st.json(
-        safety_report
-    )
-
-
-with st.expander(
-    "Safety Intelligence Agent"
-):
-
-    st.json(
-        worker_protection_report
-    )
-
-
-with st.expander(
-    "Site Risk Agent"
-):
-
-    st.json(
-        site_report
-    )
-
-
-with st.expander(
-    "Compliance Agent"
-):
-
-    st.json(
-        compliance_report
-    )
-
-
-with st.expander(
-    "Insurance Intelligence Agent"
-):
-
-    st.json(
-        insurance_report
-    )
-
-
-# ============================================================
-# REFRESH
-# ============================================================
-
-st.markdown("---")
-
-if st.button(
-    "🔄 Refresh Analysis",
-    use_container_width=True,
-):
-
+if st.button("🔄 Refresh Analysis", use_container_width=True):
     st.cache_data.clear()
-
-    st.session_state[
-        "dashboard_analysis_result"
-    ] = None
-
+    st.session_state["dashboard_analysis_result"] = None
     st.rerun()

@@ -12,49 +12,178 @@ from utils.database import (
 
 
 # ============================================================
-# PAGE HEADER
+# PAGE CONFIGURATION
 # ============================================================
 
-st.title(":material/history: Inspection history")
-
-st.caption(
-    "Review previously saved Construction-AI site assessments, "
-    "risk trends, compliance findings, and inspection images."
+st.set_page_config(
+    page_title="ConstructAI | Inspection History",
+    page_icon="📋",
+    layout="wide",
 )
 
 
 # ============================================================
-# HELPER
+# PROFESSIONAL UI
+# ============================================================
+
+st.markdown(
+    """
+    <style>
+    .block-container {
+        padding-top: 1.4rem;
+        padding-bottom: 2rem;
+        max-width: 1500px;
+    }
+
+    .hero {
+        padding: 28px 32px;
+        border-radius: 18px;
+        background: linear-gradient(135deg, #111827 0%, #1f2937 55%, #374151 100%);
+        color: white;
+        margin-bottom: 22px;
+        border: 1px solid rgba(255,255,255,.08);
+    }
+
+    .hero-brand {
+        font-size: 13px;
+        letter-spacing: 2px;
+        font-weight: 700;
+        color: #93c5fd;
+        margin-bottom: 7px;
+    }
+
+    .hero-title {
+        font-size: 32px;
+        font-weight: 800;
+        margin: 0;
+    }
+
+    .hero-subtitle {
+        color: #d1d5db;
+        margin-top: 8px;
+        font-size: 15px;
+    }
+
+    .section-title {
+        font-size: 20px;
+        font-weight: 750;
+        margin: 22px 0 10px 0;
+    }
+
+    .record-card {
+        padding: 18px;
+        border-radius: 14px;
+        border: 1px solid #e5e7eb;
+        background: #ffffff;
+        min-height: 108px;
+        box-shadow: 0 2px 10px rgba(0,0,0,.04);
+    }
+
+    .record-label {
+        font-size: 12px;
+        color: #6b7280;
+        text-transform: uppercase;
+        letter-spacing: .7px;
+        font-weight: 700;
+    }
+
+    .record-value {
+        font-size: 25px;
+        font-weight: 800;
+        margin-top: 8px;
+        color: #111827;
+    }
+
+    .record-meta {
+        font-size: 12px;
+        color: #6b7280;
+        margin-top: 5px;
+    }
+
+    .danger-card {
+        padding: 18px;
+        border-radius: 14px;
+        border: 1px solid #fecaca;
+        background: #fef2f2;
+    }
+
+    .safe-card {
+        padding: 18px;
+        border-radius: 14px;
+        border: 1px solid #bbf7d0;
+        background: #f0fdf4;
+    }
+
+    .info-card {
+        padding: 18px;
+        border-radius: 14px;
+        border: 1px solid #dbeafe;
+        background: #eff6ff;
+    }
+
+    .muted {
+        color: #6b7280;
+        font-size: 12px;
+    }
+
+    .section-divider {
+        margin: 28px 0 10px 0;
+        border-top: 1px solid #e5e7eb;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+# ============================================================
+# HERO
+# ============================================================
+
+st.markdown(
+    """
+    <div class="hero">
+        <div class="hero-brand">CONSTRUCTAI • RISK INTELLIGENCE PLATFORM</div>
+        <div class="hero-title">Inspection & Alert History</div>
+        <div class="hero-subtitle">
+            Centralized records for site assessments, safety findings,
+            compliance, risk trends and real-time monitoring alerts.
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+# ============================================================
+# HELPERS
 # ============================================================
 
 def load_json_list(value):
     """Safely convert JSON database text into a Python list."""
-
     if not value:
         return []
 
     try:
         result = json.loads(value)
-
-        if isinstance(result, list):
-            return result
-
-        return []
-
-    except (
-        json.JSONDecodeError,
-        TypeError,
-    ):
+        return result if isinstance(result, list) else []
+    except (json.JSONDecodeError, TypeError):
         return []
 
 
+def safe_float(value, default=0.0):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
 # ============================================================
-# LOAD INSPECTIONS
+# LOAD DATA
 # ============================================================
 
-inspections = get_recent_inspections(
-    limit=200
-)
+inspections = get_recent_inspections(limit=200)
+total_inspections = get_inspection_count()
 
 
 # ============================================================
@@ -62,16 +191,19 @@ inspections = get_recent_inspections(
 # ============================================================
 
 if not inspections:
-
-    with st.container(border=True):
-
-        st.info(
-            "No saved inspections yet. Go to **Site assessment**, "
-            "upload a construction-site image, and select "
-            "**Analyze site safety**.",
-            icon=":material/info:",
-        )
-
+    st.markdown(
+        """
+        <div class="info-card">
+            <b>No saved inspections yet.</b><br>
+            <span class="muted">
+                Run a Site Assessment first. Once an assessment is saved,
+                its risk, safety, compliance and image information will appear
+                here.
+            </span>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
     st.stop()
 
 
@@ -79,19 +211,13 @@ if not inspections:
 # DATAFRAME
 # ============================================================
 
-inspections_df = pd.DataFrame(
-    inspections
-)
+inspections_df = pd.DataFrame(inspections)
 
-
-# Convert timestamp
 inspections_df["created_at"] = pd.to_datetime(
     inspections_df["created_at"],
     errors="coerce",
 )
 
-
-# Sort newest first
 inspections_df = inspections_df.sort_values(
     "created_at",
     ascending=False,
@@ -99,11 +225,8 @@ inspections_df = inspections_df.sort_values(
 
 
 # ============================================================
-# OVERVIEW METRICS
+# EXECUTIVE OVERVIEW
 # ============================================================
-
-total_inspections = get_inspection_count()
-
 
 high_risk_count = len(
     inspections_df[
@@ -111,51 +234,71 @@ high_risk_count = len(
     ]
 )
 
-
 unsafe_count = len(
     inspections_df[
         inspections_df["safety_status"] == "Unsafe"
     ]
 )
 
-
 non_compliant_count = len(
     inspections_df[
-        inspections_df["compliance_status"]
-        == "Non-Compliant"
+        inspections_df["compliance_status"] == "Non-Compliant"
     ]
 )
 
-
-st.header(
-    ":material/analytics: Inspection overview"
+st.markdown(
+    '<div class="section-title">Records overview</div>',
+    unsafe_allow_html=True,
 )
 
+c1, c2, c3, c4 = st.columns(4)
 
-with st.container(horizontal=True):
-
-    st.metric(
-        "Saved inspections",
-        total_inspections,
-        border=True,
+with c1:
+    st.markdown(
+        f"""
+        <div class="record-card">
+            <div class="record-label">Saved inspections</div>
+            <div class="record-value">{total_inspections}</div>
+            <div class="record-meta">Historical site assessments</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
-    st.metric(
-        "High-risk inspections",
-        high_risk_count,
-        border=True,
+with c2:
+    st.markdown(
+        f"""
+        <div class="record-card">
+            <div class="record-label">High-risk records</div>
+            <div class="record-value">{high_risk_count}</div>
+            <div class="record-meta">Site risk classified High</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
-    st.metric(
-        "Unsafe inspections",
-        unsafe_count,
-        border=True,
+with c3:
+    st.markdown(
+        f"""
+        <div class="record-card">
+            <div class="record-label">Unsafe inspections</div>
+            <div class="record-value">{unsafe_count}</div>
+            <div class="record-meta">Safety status marked Unsafe</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
-    st.metric(
-        "Non-compliant inspections",
-        non_compliant_count,
-        border=True,
+with c4:
+    st.markdown(
+        f"""
+        <div class="record-card">
+            <div class="record-label">Non-compliant</div>
+            <div class="record-value">{non_compliant_count}</div>
+            <div class="record-meta">Compliance status requiring action</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
 
@@ -163,296 +306,186 @@ with st.container(horizontal=True):
 # HISTORICAL ANALYTICS
 # ============================================================
 
-st.header(
-    ":material/monitoring: Risk analytics"
+st.markdown(
+    '<div class="section-title">Historical risk intelligence</div>',
+    unsafe_allow_html=True,
 )
-
-
-# ------------------------------------------------------------
-# Prepare analytics data
-# ------------------------------------------------------------
 
 analytics_df = inspections_df.copy()
 
-analytics_df["site_risk_score"] = pd.to_numeric(
-    analytics_df["site_risk_score"],
-    errors="coerce",
-)
+for column in [
+    "site_risk_score",
+    "safety_score",
+    "insurance_risk_score",
+]:
+    analytics_df[column] = pd.to_numeric(
+        analytics_df[column],
+        errors="coerce",
+    )
 
-analytics_df["safety_score"] = pd.to_numeric(
-    analytics_df["safety_score"],
-    errors="coerce",
-)
+analytics_df = analytics_df.dropna(subset=["created_at"])
+analytics_df = analytics_df.sort_values("created_at")
 
-analytics_df["insurance_risk_score"] = pd.to_numeric(
-    analytics_df["insurance_risk_score"],
-    errors="coerce",
-)
+avg_site_risk = analytics_df["site_risk_score"].mean()
+avg_safety = analytics_df["safety_score"].mean()
+avg_insurance = analytics_df["insurance_risk_score"].mean()
 
+a1, a2, a3 = st.columns(3)
 
-analytics_df = analytics_df.dropna(
-    subset=["created_at"]
-)
+with a1:
+    st.metric(
+        "Average site risk",
+        f"{avg_site_risk:.1f}/100"
+        if pd.notna(avg_site_risk)
+        else "N/A",
+    )
 
-analytics_df = analytics_df.sort_values(
-    "created_at"
-)
+with a2:
+    st.metric(
+        "Average safety protection",
+        f"{avg_safety:.1f}/100"
+        if pd.notna(avg_safety)
+        else "N/A",
+    )
 
-
-# ------------------------------------------------------------
-# Average metrics
-# ------------------------------------------------------------
-
-avg_site_risk = analytics_df[
-    "site_risk_score"
-].mean()
-
-avg_safety_protection = analytics_df[
-    "safety_score"
-].mean()
-
-avg_insurance_risk = analytics_df[
-    "insurance_risk_score"
-].mean()
-
-
-metric1, metric2, metric3 = st.columns(3)
-
-
-with metric1:
-
-    if pd.notna(avg_site_risk):
-
-        st.metric(
-            "Average site risk",
-            f"{avg_site_risk:.1f}/100",
-        )
-
-    else:
-
-        st.metric(
-            "Average site risk",
-            "N/A",
-        )
-
-
-with metric2:
-
-    if pd.notna(avg_safety_protection):
-
-        st.metric(
-            "Average safety protection",
-            f"{avg_safety_protection:.1f}/100",
-        )
-
-    else:
-
-        st.metric(
-            "Average safety protection",
-            "N/A",
-        )
-
-
-with metric3:
-
-    if pd.notna(avg_insurance_risk):
-
-        st.metric(
-            "Average insurance risk",
-            f"{avg_insurance_risk:.1f}/100",
-        )
-
-    else:
-
-        st.metric(
-            "Average insurance risk",
-            "N/A",
-        )
-
+with a3:
+    st.metric(
+        "Average insurance risk",
+        f"{avg_insurance:.1f}/100"
+        if pd.notna(avg_insurance)
+        else "N/A",
+    )
 
 st.caption(
-    "Safety protection score is interpreted as higher-is-better. "
-    "Site and insurance scores are risk scores where higher "
-    "indicates greater risk."
+    "Safety protection is higher-is-better. Site and insurance scores "
+    "represent risk, where higher values indicate greater risk."
 )
 
 
 # ============================================================
-# RISK TREND
+# TRENDS
 # ============================================================
 
-st.subheader(
-    ":material/trending_up: Risk trend"
-)
+trend_col1, trend_col2 = st.columns(2)
 
-
-if len(analytics_df) >= 1:
-
-    trend_df = analytics_df[
-        [
-            "created_at",
-            "site_risk_score",
-            "insurance_risk_score",
-        ]
-    ].copy()
-
-
-    trend_df = trend_df.set_index(
-        "created_at"
+with trend_col1:
+    st.markdown(
+        '<div class="section-title">Site & insurance risk trend</div>',
+        unsafe_allow_html=True,
     )
 
+    if len(analytics_df) >= 1:
+        trend_df = analytics_df[
+            [
+                "created_at",
+                "site_risk_score",
+                "insurance_risk_score",
+            ]
+        ].copy()
 
-    trend_df = trend_df.rename(
-        columns={
-            "site_risk_score": "Site Risk",
-            "insurance_risk_score": "Insurance Risk",
-        }
+        trend_df = trend_df.set_index("created_at")
+        trend_df = trend_df.rename(
+            columns={
+                "site_risk_score": "Site Risk",
+                "insurance_risk_score": "Insurance Risk",
+            }
+        )
+
+        st.line_chart(
+            trend_df,
+            y=["Site Risk", "Insurance Risk"],
+            height=300,
+        )
+    else:
+        st.info("Not enough data to display risk trends.")
+
+with trend_col2:
+    st.markdown(
+        '<div class="section-title">Safety protection trend</div>',
+        unsafe_allow_html=True,
     )
 
+    if len(analytics_df) >= 1:
+        safety_trend_df = analytics_df[
+            [
+                "created_at",
+                "safety_score",
+            ]
+        ].copy()
 
-    st.line_chart(
-        trend_df,
-        y=[
-            "Site Risk",
-            "Insurance Risk",
-        ],
-        height=320,
-    )
+        safety_trend_df = safety_trend_df.set_index("created_at")
+        safety_trend_df = safety_trend_df.rename(
+            columns={
+                "safety_score": "Safety Protection Score"
+            }
+        )
 
-else:
-
-    st.info(
-        "Not enough data to display risk trends."
-    )
-
-
-# ============================================================
-# SAFETY PROTECTION TREND
-# ============================================================
-
-st.subheader(
-    ":material/health_and_safety: Safety protection trend"
-)
-
-
-if len(analytics_df) >= 1:
-
-    safety_trend_df = analytics_df[
-        [
-            "created_at",
-            "safety_score",
-        ]
-    ].copy()
-
-
-    safety_trend_df = safety_trend_df.set_index(
-        "created_at"
-    )
-
-
-    safety_trend_df = safety_trend_df.rename(
-        columns={
-            "safety_score": "Safety Protection Score"
-        }
-    )
-
-
-    st.line_chart(
-        safety_trend_df,
-        y="Safety Protection Score",
-        height=280,
-    )
-
-else:
-
-    st.info(
-        "Not enough data to display safety trends."
-    )
+        st.line_chart(
+            safety_trend_df,
+            y="Safety Protection Score",
+            height=300,
+        )
+    else:
+        st.info("Not enough data to display safety trends.")
 
 
 # ============================================================
 # COMPLIANCE DISTRIBUTION
 # ============================================================
 
-st.subheader(
-    ":material/gavel: Compliance distribution"
+st.markdown(
+    '<div class="section-title">Compliance distribution</div>',
+    unsafe_allow_html=True,
 )
 
-
 compliance_counts = (
-    inspections_df[
-        "compliance_status"
-    ]
+    inspections_df["compliance_status"]
     .value_counts()
 )
 
-
 if not compliance_counts.empty:
-
     compliance_chart = (
         compliance_counts
         .rename_axis("Compliance Status")
         .to_frame("Inspections")
     )
 
-
     st.bar_chart(
         compliance_chart,
         y="Inspections",
-        height=280,
+        height=260,
     )
-
 else:
-
-    st.info(
-        "No compliance history is available."
-    )
+    st.info("No compliance history is available.")
 
 
 # ============================================================
 # FILTERS
 # ============================================================
 
-st.header(
-    ":material/filter_list: Filter inspections"
+st.markdown(
+    '<div class="section-title">Find an inspection record</div>',
+    unsafe_allow_html=True,
 )
 
+f1, f2, f3 = st.columns(3)
 
-filter_left, filter_right, filter_third = st.columns(
-    3
-)
-
-
-with filter_left:
-
+with f1:
     risk_filter = st.selectbox(
         "Site-risk level",
-        options=[
-            "All",
-            "Low",
-            "Medium",
-            "High",
-        ],
+        ["All", "Low", "Medium", "High"],
     )
 
-
-with filter_right:
-
+with f2:
     safety_filter = st.selectbox(
         "Safety status",
-        options=[
-            "All",
-            "Safe",
-            "Unsafe",
-        ],
+        ["All", "Safe", "Unsafe"],
     )
 
-
-with filter_third:
-
+with f3:
     compliance_filter = st.selectbox(
         "Compliance status",
-        options=[
+        [
             "All",
             "Compliant",
             "Partially Compliant",
@@ -460,66 +493,40 @@ with filter_third:
         ],
     )
 
-
-# ============================================================
-# APPLY FILTERS
-# ============================================================
-
 filtered_df = inspections_df.copy()
 
-
 if risk_filter != "All":
-
     filtered_df = filtered_df[
-        filtered_df["site_risk_level"]
-        == risk_filter
+        filtered_df["site_risk_level"] == risk_filter
     ]
-
 
 if safety_filter != "All":
-
     filtered_df = filtered_df[
-        filtered_df["safety_status"]
-        == safety_filter
+        filtered_df["safety_status"] == safety_filter
     ]
-
 
 if compliance_filter != "All":
-
     filtered_df = filtered_df[
-        filtered_df["compliance_status"]
-        == compliance_filter
+        filtered_df["compliance_status"] == compliance_filter
     ]
 
-
-# ============================================================
-# FILTER RESULT
-# ============================================================
-
 st.caption(
-    f"Showing {len(filtered_df)} inspection(s) "
-    f"matching the selected filters."
+    f"Showing {len(filtered_df)} inspection(s) matching the selected filters."
 )
 
 
 # ============================================================
-# INSPECTION TABLE
+# INSPECTION RECORD TABLE
 # ============================================================
 
-st.header(
-    ":material/table_chart: Saved inspection records"
+st.markdown(
+    '<div class="section-title">Saved inspection records</div>',
+    unsafe_allow_html=True,
 )
-
 
 if filtered_df.empty:
-
-    st.warning(
-        "No saved inspections match the selected filters.",
-        icon=":material/filter_alt_off:",
-    )
-
+    st.warning("No saved inspections match the selected filters.")
 else:
-
     display_df = filtered_df[
         [
             "id",
@@ -534,7 +541,6 @@ else:
         ]
     ].copy()
 
-
     display_df = display_df.rename(
         columns={
             "id": "Inspection ID",
@@ -548,7 +554,6 @@ else:
             "insurance_risk_level": "Insurance risk",
         }
     )
-
 
     st.dataframe(
         display_df,
@@ -573,450 +578,330 @@ else:
 # INSPECTION DETAILS
 # ============================================================
 
-st.header(
-    ":material/visibility: Inspection details"
+st.markdown(
+    '<div class="section-title">Inspection intelligence record</div>',
+    unsafe_allow_html=True,
 )
-
 
 if filtered_df.empty:
+    st.info("Select different filters to view an inspection.")
+else:
 
-    st.info(
-        "Select different filters to view an inspection."
-    )
+    inspection_options = {}
 
-    st.stop()
+    for _, row in filtered_df.iterrows():
+        created_at = row["created_at"]
 
+        if pd.notna(created_at):
+            date_text = created_at.strftime(
+                "%d %b %Y, %H:%M"
+            )
+        else:
+            date_text = "Unknown date"
 
-# ============================================================
-# INSPECTION SELECTOR
-# ============================================================
-
-inspection_options = {}
-
-
-for _, row in filtered_df.iterrows():
-
-    created_at = row["created_at"]
-
-    if pd.notna(created_at):
-
-        date_text = created_at.strftime(
-            "%d %b %Y, %H:%M"
+        label = (
+            f"#{row['id']} • "
+            f"{row['project_type']} • "
+            f"{row['location']} • "
+            f"{date_text}"
         )
 
-    else:
+        inspection_options[label] = row["id"]
 
-        date_text = "Unknown date"
+    selected_label = st.selectbox(
+        "Select a saved inspection",
+        options=list(inspection_options.keys()),
+    )
 
+    selected_id = inspection_options[selected_label]
 
-    label = (
-        f"#{row['id']} • "
-        f"{row['project_type']} • "
-        f"{row['location']} • "
-        f"{date_text}"
+    selected_rows = filtered_df[
+        filtered_df["id"] == selected_id
+    ]
+
+    if selected_rows.empty:
+        st.error("Selected inspection could not be found.")
+        st.stop()
+
+    selected_record = (
+        selected_rows.iloc[0]
+        .to_dict()
+    )
+
+    selected_hazards = load_json_list(
+        selected_record.get("hazards")
+    )
+
+    selected_actions = load_json_list(
+        selected_record.get("recommended_actions")
+    )
+
+    selected_violations = load_json_list(
+        selected_record.get("ppe_violations")
     )
 
 
-    inspection_options[label] = row["id"]
+    # ========================================================
+    # RECORD HEADER
+    # ========================================================
 
-
-selected_label = st.selectbox(
-    "Select a saved inspection",
-    options=list(
-        inspection_options.keys()
-    ),
-)
-
-
-selected_id = inspection_options[
-    selected_label
-]
-
-
-selected_rows = filtered_df[
-    filtered_df["id"] == selected_id
-]
-
-
-if selected_rows.empty:
-
-    st.error(
-        "Selected inspection could not be found."
+    selected_risk = selected_record.get(
+        "site_risk_level",
+        "Unknown",
     )
 
-    st.stop()
-
-
-selected_record = (
-    selected_rows.iloc[0]
-    .to_dict()
-)
-
-
-# ============================================================
-# LOAD SAVED JSON DATA
-# ============================================================
-
-selected_hazards = load_json_list(
-    selected_record.get(
-        "hazards"
+    selected_safety = selected_record.get(
+        "safety_status",
+        "Unknown",
     )
-)
 
-
-selected_actions = load_json_list(
-    selected_record.get(
-        "recommended_actions"
+    selected_compliance = selected_record.get(
+        "compliance_status",
+        "Unknown",
     )
-)
 
-
-selected_violations = load_json_list(
-    selected_record.get(
-        "ppe_violations"
+    selected_insurance = selected_record.get(
+        "insurance_risk_level",
+        "Unknown",
     )
-)
 
+    r1, r2, r3, r4 = st.columns(4)
 
-# ============================================================
-# DETAILS
-# ============================================================
+    with r1:
+        st.metric("Site Risk", selected_risk)
 
-detail_left, detail_right = st.columns(
-    [1.1, 1]
-)
-
-
-# ------------------------------------------------------------
-# Saved image
-# ------------------------------------------------------------
-
-with detail_left:
-
-    with st.container(border=True):
-
-        st.subheader(
-            "Saved inspection image"
+    with r2:
+        st.metric(
+            "Risk Score",
+            f"{safe_float(selected_record.get('site_risk_score')):.0f}/100",
         )
 
+    with r3:
+        st.metric("Safety", selected_safety)
 
-        image_path_value = selected_record.get(
-            "image_path"
+    with r4:
+        st.metric("Compliance", selected_compliance)
+
+
+    # ========================================================
+    # IMAGE + INTELLIGENCE
+    # ========================================================
+
+    detail_left, detail_right = st.columns(
+        [1.15, 1]
+    )
+
+    with detail_left:
+        st.markdown(
+            '<div class="section-title">Inspection evidence</div>',
+            unsafe_allow_html=True,
         )
 
+        with st.container(border=True):
 
-        if image_path_value:
-
-            image_path = Path(
-                image_path_value
+            image_path_value = selected_record.get(
+                "image_path"
             )
 
+            if image_path_value:
+                image_path = Path(image_path_value)
 
-            if image_path.exists():
-
-                st.image(
-                    str(image_path),
-                    caption=selected_record.get(
-                        "image_filename",
-                        "Inspection image",
-                    ),
-                    width="stretch",
-                )
-
+                if image_path.exists():
+                    st.image(
+                        str(image_path),
+                        caption=selected_record.get(
+                            "image_filename",
+                            "Inspection image",
+                        ),
+                        width="stretch",
+                    )
+                else:
+                    st.warning(
+                        "The saved inspection image file could not be found."
+                    )
             else:
-
                 st.warning(
-                    "The saved inspection image file "
-                    "could not be found.",
-                    icon=":material/image_not_supported:",
+                    "No image path was saved for this inspection."
                 )
 
-        else:
+    with detail_right:
+        st.markdown(
+            '<div class="section-title">Assessment summary</div>',
+            unsafe_allow_html=True,
+        )
 
-            st.warning(
-                "No image path was saved for this inspection."
+        with st.container(border=True):
+
+            st.metric(
+                "Safety protection score",
+                f"{safe_float(selected_record.get('safety_score')):.0f}/100",
             )
 
-
-# ------------------------------------------------------------
-# Summary
-# ------------------------------------------------------------
-
-with detail_right:
-
-    with st.container(border=True):
-
-        st.subheader(
-            "Risk and compliance summary"
-        )
-
-
-        st.metric(
-            "Overall site risk",
-            selected_record.get(
-                "site_risk_level",
-                "Unknown",
-            ),
-        )
-
-
-        st.metric(
-            "Site-risk score",
-            f"{selected_record.get('site_risk_score', 0)} / 100",
-        )
-
-
-        st.metric(
-            "Safety status",
-            selected_record.get(
-                "safety_status",
-                "Unknown",
-            ),
-        )
-
-
-        st.metric(
-            "Safety protection score",
-            f"{selected_record.get('safety_score', 0)} / 100",
-        )
-
-
-        st.metric(
-            "Compliance status",
-            selected_record.get(
-                "compliance_status",
-                "Unknown",
-            ),
-        )
-
-
-        st.metric(
-            "Insurance risk",
-            selected_record.get(
-                "insurance_risk_level",
-                "Unknown",
-            ),
-        )
-
-
-        equipment_value = selected_record.get(
-            "equipment_mttf",
-            0,
-        )
-
-
-        try:
-
-            equipment_value = float(
-                equipment_value
+            equipment_value = safe_float(
+                selected_record.get("equipment_mttf"),
+                0,
             )
 
-            equipment_text = (
-                f"{equipment_value:.1f}"
+            st.metric(
+                "Equipment MTTF",
+                f"{equipment_value:.1f}",
             )
 
-        except (
-            TypeError,
-            ValueError,
-        ):
-
-            equipment_text = "N/A"
-
-
-        st.metric(
-            "Equipment MTTF",
-            equipment_text,
-        )
-
-
-        st.write(
-            f"**Weather:** "
-            f"{selected_record.get('weather_prediction', 'Unknown')}"
-        )
-
-
-# ============================================================
-# HAZARDS & PPE
-# ============================================================
-
-hazards_column, violations_column = st.columns(
-    2
-)
-
-
-with hazards_column:
-
-    with st.container(border=True):
-
-        st.subheader(
-            "Detected hazards"
-        )
-
-
-        if selected_hazards:
-
-            for hazard in selected_hazards:
-
-                st.warning(
-                    hazard,
-                    icon=":material/warning:",
-                )
-
-        else:
-
-            st.success(
-                "No saved hazards for this inspection."
+            st.metric(
+                "Insurance risk",
+                selected_insurance,
             )
-
-
-with violations_column:
-
-    with st.container(border=True):
-
-        st.subheader(
-            "Confirmed PPE violations"
-        )
-
-
-        if selected_violations:
-
-            for violation in selected_violations:
-
-                st.error(
-                    violation,
-                    icon=":material/report:",
-                )
-
-        else:
-
-            st.success(
-                "No confirmed PPE violations."
-            )
-
-
-# ============================================================
-# RECOMMENDED ACTIONS
-# ============================================================
-
-with st.container(border=True):
-
-    st.subheader(
-        "Recommended actions"
-    )
-
-
-    if selected_actions:
-
-        for index, action in enumerate(
-            selected_actions,
-            start=1,
-        ):
 
             st.write(
-                f":material/check_circle: "
-                f"**{index}.** {action}"
+                f"**Weather:** "
+                f"{selected_record.get('weather_prediction', 'Unknown')}"
             )
 
-    else:
+            st.write(
+                f"**Project risk:** "
+                f"{selected_record.get('project_risk', 'Unknown')}"
+            )
 
-        st.success(
-            "No actions were recorded for this inspection."
+            st.write(
+                f"**Workers detected:** "
+                f"{selected_record.get('workers_detected', 0)}"
+            )
+
+
+    # ========================================================
+    # HAZARDS + PPE
+    # ========================================================
+
+    h1, h2 = st.columns(2)
+
+    with h1:
+        st.markdown(
+            '<div class="section-title">Detected hazards</div>',
+            unsafe_allow_html=True,
         )
 
+        with st.container(border=True):
+            if selected_hazards:
+                for hazard in selected_hazards:
+                    st.warning(hazard)
+            else:
+                st.success(
+                    "No saved hazards for this inspection."
+                )
 
-# ============================================================
-# INSPECTION INFORMATION
-# ============================================================
+    with h2:
+        st.markdown(
+            '<div class="section-title">Confirmed PPE violations</div>',
+            unsafe_allow_html=True,
+        )
 
-with st.container(border=True):
+        with st.container(border=True):
+            if selected_violations:
+                for violation in selected_violations:
+                    st.error(violation)
+            else:
+                st.success(
+                    "No confirmed PPE violations."
+                )
 
-    st.subheader(
-        "Inspection information"
+
+    # ========================================================
+    # ACTION PLAN
+    # ========================================================
+
+    st.markdown(
+        '<div class="section-title">Corrective action plan</div>',
+        unsafe_allow_html=True,
     )
 
+    with st.container(border=True):
+        if selected_actions:
+            for index, action in enumerate(
+                selected_actions,
+                start=1,
+            ):
+                st.write(
+                    f"**{index}.** {action}"
+                )
+        else:
+            st.success(
+                "No corrective actions were recorded."
+            )
 
-    info_col1, info_col2, info_col3 = st.columns(
-        3
+
+    # ========================================================
+    # RECORD INFORMATION
+    # ========================================================
+
+    st.markdown(
+        '<div class="section-title">Inspection metadata</div>',
+        unsafe_allow_html=True,
     )
 
+    with st.container(border=True):
 
-    with info_col1:
+        m1, m2, m3 = st.columns(3)
 
-        st.write(
-            f"**Inspection ID:** "
-            f"#{selected_record.get('id', 'N/A')}"
-        )
+        with m1:
+            st.write(
+                f"**Inspection ID:** "
+                f"#{selected_record.get('id', 'N/A')}"
+            )
+            st.write(
+                f"**Project type:** "
+                f"{selected_record.get('project_type', 'N/A')}"
+            )
 
-        st.write(
-            f"**Project type:** "
-            f"{selected_record.get('project_type', 'N/A')}"
-        )
+        with m2:
+            st.write(
+                f"**Location:** "
+                f"{selected_record.get('location', 'N/A')}"
+            )
+            st.write(
+                f"**Project risk:** "
+                f"{selected_record.get('project_risk', 'N/A')}"
+            )
 
+        with m3:
+            st.write(
+                f"**Workers detected:** "
+                f"{selected_record.get('workers_detected', 0)}"
+            )
+            st.write(
+                f"**Insurance score:** "
+                f"{selected_record.get('insurance_risk_score', 0)} / 100"
+            )
 
-    with info_col2:
-
-        st.write(
-            f"**Location:** "
-            f"{selected_record.get('location', 'N/A')}"
-        )
-
-        st.write(
-            f"**Project risk:** "
-            f"{selected_record.get('project_risk', 'N/A')}"
-        )
-
-
-    with info_col3:
-
-        st.write(
-            f"**Workers detected:** "
-            f"{selected_record.get('workers_detected', 0)}"
-        )
-
-        st.write(
-            f"**Insurance score:** "
-            f"{selected_record.get('insurance_risk_score', 0)} / 100"
-        )
 
 # ============================================================
 # LIVE MONITORING ALERT HISTORY
 # ============================================================
 
-st.divider()
+st.markdown(
+    '<div class="section-divider"></div>',
+    unsafe_allow_html=True,
+)
 
-st.header(
-    ":material/notifications_active: Live Monitoring Alert History"
+st.markdown(
+    '<div class="section-title">Live monitoring alert history</div>',
+    unsafe_allow_html=True,
 )
 
 st.caption(
-    "Alerts automatically generated by the real-time "
-    "construction-site camera monitoring system."
+    "Automatic alerts generated by the real-time construction-site "
+    "camera monitoring system."
 )
 
 try:
-
-    live_alerts = get_recent_live_alerts(
-        limit=50
-    )
-
+    live_alerts = get_recent_live_alerts(limit=50)
 except Exception as e:
-
-    st.error(
-        f"Unable to load live monitoring alerts: {e}"
-    )
-
+    st.error(f"Unable to load live monitoring alerts: {e}")
     live_alerts = []
 
 
 if live_alerts:
 
-    # --------------------------------------------------------
-    # ALERT METRICS
-    # --------------------------------------------------------
-
-    total_live_alerts = len(
-        live_alerts
-    )
+    total_live_alerts = len(live_alerts)
 
     critical_alerts = sum(
         1
@@ -1030,49 +915,32 @@ if live_alerts:
         if alert.get("alert_level") == "WARNING"
     )
 
+    la1, la2, la3 = st.columns(3)
 
-    metric1, metric2, metric3 = st.columns(3)
-
-
-    with metric1:
-
+    with la1:
         st.metric(
             "Total live alerts",
             total_live_alerts,
-            border=True,
         )
 
-
-    with metric2:
-
+    with la2:
         st.metric(
             "Critical alerts",
             critical_alerts,
-            border=True,
         )
 
-
-    with metric3:
-
+    with la3:
         st.metric(
             "Warning alerts",
             warning_alerts,
-            border=True,
         )
 
 
-    # --------------------------------------------------------
+    # ========================================================
     # ALERT TABLE
-    # --------------------------------------------------------
+    # ========================================================
 
-    st.subheader(
-        ":material/table_chart: Recent live alerts"
-    )
-
-    live_alert_df = pd.DataFrame(
-        live_alerts
-    )
-
+    live_alert_df = pd.DataFrame(live_alerts)
 
     display_alert_df = live_alert_df[
         [
@@ -1088,7 +956,6 @@ if live_alerts:
         ]
     ].copy()
 
-
     display_alert_df = display_alert_df.rename(
         columns={
             "id": "Alert ID",
@@ -1098,73 +965,58 @@ if live_alerts:
             "site_risk_level": "Site risk",
             "site_risk_score": "Risk score",
             "safety_score": "Safety score",
-            "worker_protection_level":
-                "Worker protection",
-            "workers_detected":
-                "Workers",
+            "worker_protection_level": "Worker protection",
+            "workers_detected": "Workers",
         }
     )
-
 
     display_alert_df["Date and time"] = pd.to_datetime(
         display_alert_df["Date and time"],
         errors="coerce",
     )
 
-
     st.dataframe(
         display_alert_df,
         hide_index=True,
         width="stretch",
         column_config={
-
-            "Date and time":
-                st.column_config.DatetimeColumn(
-                    "Date and time",
-                    format="DD MMM YYYY, HH:mm:ss",
-                ),
-
-            "Risk score":
-                st.column_config.ProgressColumn(
-                    "Risk score",
-                    min_value=0,
-                    max_value=100,
-                    format="%d / 100",
-                ),
-
-            "Safety score":
-                st.column_config.ProgressColumn(
-                    "Safety score",
-                    min_value=0,
-                    max_value=100,
-                    format="%d / 100",
-                ),
+            "Date and time": st.column_config.DatetimeColumn(
+                "Date and time",
+                format="DD MMM YYYY, HH:mm:ss",
+            ),
+            "Risk score": st.column_config.ProgressColumn(
+                "Risk score",
+                min_value=0,
+                max_value=100,
+                format="%d / 100",
+            ),
+            "Safety score": st.column_config.ProgressColumn(
+                "Safety score",
+                min_value=0,
+                max_value=100,
+                format="%d / 100",
+            ),
         },
     )
 
 
-    # --------------------------------------------------------
+    # ========================================================
     # ALERT DETAILS
-    # --------------------------------------------------------
+    # ========================================================
 
-    st.subheader(
-        ":material/visibility: Live alert details"
+    st.markdown(
+        '<div class="section-title">Live alert intelligence</div>',
+        unsafe_allow_html=True,
     )
-
 
     alert_options = {}
 
     for alert in live_alerts:
-
-        alert_id = alert.get(
-            "id"
-        )
-
+        alert_id = alert.get("id")
         created_at = alert.get(
             "created_at",
             "Unknown time",
         )
-
         level = alert.get(
             "alert_level",
             "WARNING",
@@ -1174,54 +1026,47 @@ if live_alerts:
             f"#{alert_id} • {level} • {created_at}"
         ] = alert_id
 
-
     selected_alert_label = st.selectbox(
         "Select a live alert",
-        options=list(
-            alert_options.keys()
-        ),
+        options=list(alert_options.keys()),
     )
-
 
     selected_alert_id = alert_options[
         selected_alert_label
     ]
 
-
     selected_alert = next(
         (
             alert
             for alert in live_alerts
-            if alert.get("id")
-            == selected_alert_id
+            if alert.get("id") == selected_alert_id
         ),
         None,
     )
 
-
     if selected_alert:
 
-        st.markdown("---")
-
-
-        detail_col1, detail_col2 = st.columns(
-            2
+        alert_level = selected_alert.get(
+            "alert_level",
+            "WARNING",
         )
 
+        if alert_level == "CRITICAL":
+            st.error(
+                f"🚨 CRITICAL ALERT — "
+                f"{selected_alert.get('alert_message', 'No message')}"
+            )
+        else:
+            st.warning(
+                f"⚠️ WARNING — "
+                f"{selected_alert.get('alert_message', 'No message')}"
+            )
 
-        # ----------------------------------------------------
-        # BASIC ALERT INFORMATION
-        # ----------------------------------------------------
+        ac1, ac2 = st.columns(2)
 
-        with detail_col1:
-
-            with st.container(
-                border=True
-            ):
-
-                st.subheader(
-                    "Alert information"
-                )
+        with ac1:
+            with st.container(border=True):
+                st.subheader("Alert information")
 
                 st.write(
                     f"**Alert ID:** "
@@ -1243,20 +1088,9 @@ if live_alerts:
                     f"{selected_alert.get('alert_message', 'N/A')}"
                 )
 
-
-        # ----------------------------------------------------
-        # RISK INFORMATION
-        # ----------------------------------------------------
-
-        with detail_col2:
-
-            with st.container(
-                border=True
-            ):
-
-                st.subheader(
-                    "Risk information"
-                )
+        with ac2:
+            with st.container(border=True):
+                st.subheader("Risk information")
 
                 st.metric(
                     "Site risk",
@@ -1268,12 +1102,12 @@ if live_alerts:
 
                 st.metric(
                     "Site-risk score",
-                    f"{selected_alert.get('site_risk_score', 0)} / 100",
+                    f"{safe_float(selected_alert.get('site_risk_score')):.0f}/100",
                 )
 
                 st.metric(
                     "Safety score",
-                    f"{selected_alert.get('safety_score', 0)} / 100",
+                    f"{safe_float(selected_alert.get('safety_score')):.0f}/100",
                 )
 
                 st.write(
@@ -1288,31 +1122,22 @@ if live_alerts:
 
 
         # ----------------------------------------------------
-        # PPE VIOLATIONS
+        # PPE
         # ----------------------------------------------------
 
-        st.subheader(
-            ":material/health_and_safety: PPE violations"
+        st.markdown(
+            '<div class="section-title">PPE violations</div>',
+            unsafe_allow_html=True,
         )
 
-        selected_violations = load_json_list(
-            selected_alert.get(
-                "ppe_violations"
-            )
+        selected_live_violations = load_json_list(
+            selected_alert.get("ppe_violations")
         )
 
-
-        if selected_violations:
-
-            for violation in selected_violations:
-
-                st.error(
-                    violation,
-                    icon=":material/report:",
-                )
-
+        if selected_live_violations:
+            for violation in selected_live_violations:
+                st.error(violation)
         else:
-
             st.success(
                 "No PPE violations recorded."
             )
@@ -1322,73 +1147,63 @@ if live_alerts:
         # HAZARDS
         # ----------------------------------------------------
 
-        st.subheader(
-            ":material/warning: Detected hazards"
+        st.markdown(
+            '<div class="section-title">Detected hazards</div>',
+            unsafe_allow_html=True,
         )
 
         selected_live_hazards = load_json_list(
-            selected_alert.get(
-                "hazards"
-            )
+            selected_alert.get("hazards")
         )
 
-
         if selected_live_hazards:
-
             for hazard in selected_live_hazards:
-
-                st.warning(
-                    hazard,
-                    icon=":material/warning:",
-                )
-
+                st.warning(hazard)
         else:
-
             st.info(
                 "No hazards recorded for this alert."
             )
 
 
         # ----------------------------------------------------
-        # RECOMMENDED ACTIONS
+        # ACTIONS
         # ----------------------------------------------------
 
-        st.subheader(
-            ":material/check_circle: Recommended actions"
+        st.markdown(
+            '<div class="section-title">Recommended actions</div>',
+            unsafe_allow_html=True,
         )
 
         selected_live_actions = load_json_list(
-            selected_alert.get(
-                "recommended_actions"
-            )
+            selected_alert.get("recommended_actions")
         )
 
-
         if selected_live_actions:
-
             for index, action in enumerate(
                 selected_live_actions,
                 start=1,
             ):
-
                 st.write(
-                    f":material/check_circle: "
                     f"**{index}.** {action}"
                 )
-
         else:
-
             st.info(
                 "No recommended actions recorded."
             )
 
-
 else:
-
-    st.info(
-        "No live monitoring alerts have been recorded yet.",
-        icon=":material/info:",
+    st.markdown(
+        """
+        <div class="safe-card">
+            <b>No live monitoring alerts have been recorded yet.</b><br>
+            <span class="muted">
+                Start Live Monitoring to generate real-time safety alerts.
+            </span>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
+
 
 # ============================================================
 # REFRESH
@@ -1400,5 +1215,4 @@ if st.button(
     "🔄 Refresh inspection history",
     use_container_width=True,
 ):
-
     st.rerun()
