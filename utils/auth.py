@@ -1,19 +1,11 @@
 import hashlib
 import hmac
+import os
 import re
-import secrets
-from datetime import datetime
 
 import streamlit as st
 
-from utils.database import get_connection
-
-
-# ============================================================
-# AUTHENTICATION CONFIGURATION
-# ============================================================
-
-PASSWORD_ITERATIONS = 310_000
+from utils.database import get_connection, initialize_database
 
 
 # ============================================================
@@ -22,85 +14,54 @@ PASSWORD_ITERATIONS = 310_000
 
 def initialize_users_table():
     """
-    Create the users table if it does not already exist.
+    Make sure the users table exists.
     """
-
-    connection = get_connection()
-
-    cursor = connection.cursor()
-
-    cursor.execute(
-        """
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            full_name TEXT NOT NULL,
-            email TEXT NOT NULL UNIQUE,
-            username TEXT NOT NULL UNIQUE,
-            password_hash TEXT NOT NULL,
-            role TEXT NOT NULL DEFAULT 'Worker',
-            is_verified INTEGER NOT NULL DEFAULT 1,
-            created_at TEXT NOT NULL,
-            last_login TEXT
-        )
-        """
-    )
-
-    connection.commit()
-    connection.close()
+    initialize_database()
 
 
 # ============================================================
-# PASSWORD HASHING
+# PASSWORD SECURITY
 # ============================================================
+
+PBKDF2_ITERATIONS = 310_000
+
 
 def hash_password(password):
     """
     Securely hash a password using PBKDF2-HMAC-SHA256.
     """
-
-    salt = secrets.token_bytes(16)
+    salt = os.urandom(16)
 
     password_hash = hashlib.pbkdf2_hmac(
         "sha256",
         password.encode("utf-8"),
         salt,
-        PASSWORD_ITERATIONS,
+        PBKDF2_ITERATIONS,
     )
 
-    return (
-        f"{salt.hex()}$"
-        f"{PASSWORD_ITERATIONS}$"
-        f"{password_hash.hex()}"
-    )
+    return f"{salt.hex()}${password_hash.hex()}"
 
 
 def verify_password_hash(password, stored_hash):
     """
-    Verify a password against the stored password hash.
+    Verify a password against the stored PBKDF2 hash.
     """
-
     try:
-        salt_hex, iterations, hash_hex = stored_hash.split("$")
+        salt_hex, hash_hex = stored_hash.split("$")
 
         salt = bytes.fromhex(salt_hex)
-
-        iterations = int(iterations)
-
         expected_hash = bytes.fromhex(hash_hex)
 
         actual_hash = hashlib.pbkdf2_hmac(
             "sha256",
             password.encode("utf-8"),
             salt,
-            iterations,
+            PBKDF2_ITERATIONS,
         )
 
-        return hmac.compare_digest(
-            actual_hash,
-            expected_hash,
-        )
+        return hmac.compare_digest(actual_hash, expected_hash)
 
-    except Exception:
+    except (ValueError, TypeError):
         return False
 
 
@@ -110,42 +71,43 @@ def verify_password_hash(password, stored_hash):
 
 def validate_email(email):
     """
-    Basic email validation.
+    Validate email format.
     """
-
     pattern = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
-
-    return re.match(pattern, email) is not None
+    return bool(re.match(pattern, email))
 
 
 def validate_username(username):
     """
-    Username can contain letters, numbers, underscore and dot.
+    Username:
+    - 3 to 30 characters
+    - letters, numbers and underscore
     """
-
-    pattern = r"^[A-Za-z0-9_.]{3,30}$"
-
-    return re.match(pattern, username) is not None
+    pattern = r"^[A-Za-z0-9_]{3,30}$"
+    return bool(re.match(pattern, username))
 
 
 def validate_password(password):
     """
-    Minimum password requirements.
+    Password requirements:
+    - minimum 8 characters
+    - uppercase
+    - lowercase
+    - number
     """
-
     if len(password) < 8:
         return False, "Password must contain at least 8 characters."
 
-    if not any(char.isupper() for char in password):
+    if not re.search(r"[A-Z]", password):
         return False, "Password must contain at least one uppercase letter."
 
-    if not any(char.islower() for char in password):
+    if not re.search(r"[a-z]", password):
         return False, "Password must contain at least one lowercase letter."
 
-    if not any(char.isdigit() for char in password):
+    if not re.search(r"[0-9]", password):
         return False, "Password must contain at least one number."
 
-    return True, ""
+    return True, "Password is valid."
 
 
 # ============================================================
@@ -162,7 +124,14 @@ def create_user(
     """
     Create a new user.
 
-    Public signup is expected to use the default Worker role.
+    Public signup should use:
+        role="Worker"
+
+    Admin-created accounts can use:
+        Admin
+        Project Manager
+        Safety Officer
+        Worker
     """
 
     initialize_users_table()
@@ -171,6 +140,17 @@ def create_user(
     email = email.strip().lower()
     username = username.strip()
 
+    allowed_roles = {
+        "Admin",
+        "Project Manager",
+        "Safety Officer",
+        "Worker",
+    }
+
+    # -----------------------------
+    # Basic validation
+    # -----------------------------
+
     if not full_name:
         return False, "Full name is required."
 
@@ -178,56 +158,57 @@ def create_user(
         return False, "Please enter a valid email address."
 
     if not validate_username(username):
-        return (
-            False,
-            "Username must contain 3-30 letters, numbers, underscores or dots.",
+        return False, (
+            "Username must contain 3-30 characters "
+            "using only letters, numbers or underscore."
         )
 
-    valid_password, password_message = validate_password(password)
+    password_valid, password_message = validate_password(password)
 
-    if not valid_password:
+    if not password_valid:
         return False, password_message
 
-    # Public registration must never create privileged accounts.
-    if role not in [
-        "Worker",
-        "Project Manager",
-        "Safety Officer",
-        "Admin",
-    ]:
-        role = "Worker"
+    if role not in allowed_roles:
+        return False, "Invalid user role."
+
+    # -----------------------------
+    # Check duplicate user
+    # -----------------------------
 
     connection = get_connection()
 
-    cursor = connection.cursor()
-
     try:
-
-        # Check email
-        cursor.execute(
-            "SELECT id FROM users WHERE email = ?",
+        existing_email = connection.execute(
+            """
+            SELECT id
+            FROM users
+            WHERE LOWER(email) = LOWER(?)
+            """,
             (email,),
-        )
+        ).fetchone()
 
-        if cursor.fetchone():
+        if existing_email:
             return False, "An account with this email already exists."
 
-        # Check username
-        cursor.execute(
-            "SELECT id FROM users WHERE username = ?",
+        existing_username = connection.execute(
+            """
+            SELECT id
+            FROM users
+            WHERE LOWER(username) = LOWER(?)
+            """,
             (username,),
-        )
+        ).fetchone()
 
-        if cursor.fetchone():
+        if existing_username:
             return False, "This username is already taken."
+
+        # -----------------------------
+        # Create account
+        # -----------------------------
 
         password_hash = hash_password(password)
 
-        created_at = datetime.now().isoformat(
-            timespec="seconds"
-        )
-
-        cursor.execute(
+        connection.execute(
             """
             INSERT INTO users (
                 full_name,
@@ -238,7 +219,7 @@ def create_user(
                 is_verified,
                 created_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP)
             """,
             (
                 full_name,
@@ -246,8 +227,6 @@ def create_user(
                 username,
                 password_hash,
                 role,
-                1,
-                created_at,
             ),
         )
 
@@ -256,13 +235,9 @@ def create_user(
         return True, "Account created successfully."
 
     except Exception as e:
-
-        connection.rollback()
-
         return False, f"Unable to create account: {e}"
 
     finally:
-
         connection.close()
 
 
@@ -272,20 +247,17 @@ def create_user(
 
 def authenticate_user(identifier, password):
     """
-    Authenticate using either username or email.
+    Authenticate using username OR email.
     """
 
     initialize_users_table()
 
-    identifier = identifier.strip().lower()
+    identifier = identifier.strip()
 
     connection = get_connection()
 
-    cursor = connection.cursor()
-
     try:
-
-        cursor.execute(
+        user = connection.execute(
             """
             SELECT
                 id,
@@ -296,127 +268,67 @@ def authenticate_user(identifier, password):
                 role,
                 is_verified
             FROM users
-            WHERE LOWER(username) = ?
-               OR LOWER(email) = ?
+            WHERE LOWER(username) = LOWER(?)
+               OR LOWER(email) = LOWER(?)
             LIMIT 1
             """,
-            (
-                identifier,
-                identifier,
-            ),
-        )
-
-        user = cursor.fetchone()
+            (identifier, identifier),
+        ).fetchone()
 
         if not user:
             return None
 
-        # sqlite3.Row support
-        if hasattr(user, "keys"):
-
-            stored_hash = user["password_hash"]
-
-            if not verify_password_hash(
-                password,
-                stored_hash,
-            ):
-                return None
-
-            if not user["is_verified"]:
-                return None
-
-            cursor.execute(
-                """
-                UPDATE users
-                SET last_login = ?
-                WHERE id = ?
-                """,
-                (
-                    datetime.now().isoformat(
-                        timespec="seconds"
-                    ),
-                    user["id"],
-                ),
-            )
-
-            connection.commit()
-
-            return {
-                "id": user["id"],
-                "full_name": user["full_name"],
-                "email": user["email"],
-                "username": user["username"],
-                "role": user["role"],
-            }
-
-        # Fallback for tuple-based SQLite connections
-        stored_hash = user[4]
+        if not user["is_verified"]:
+            return None
 
         if not verify_password_hash(
             password,
-            stored_hash,
+            user["password_hash"],
         ):
             return None
 
-        if not user[6]:
-            return None
-
-        cursor.execute(
+        connection.execute(
             """
             UPDATE users
-            SET last_login = ?
+            SET last_login = CURRENT_TIMESTAMP
             WHERE id = ?
             """,
-            (
-                datetime.now().isoformat(
-                    timespec="seconds"
-                ),
-                user[0],
-            ),
+            (user["id"],),
         )
 
         connection.commit()
 
         return {
-            "id": user[0],
-            "full_name": user[1],
-            "email": user[2],
-            "username": user[3],
-            "role": user[5],
+            "id": user["id"],
+            "full_name": user["full_name"],
+            "email": user["email"],
+            "username": user["username"],
+            "role": user["role"],
         }
 
     finally:
-
         connection.close()
 
 
 # ============================================================
-# STREAMLIT LOGIN SESSION
+# LOGIN
 # ============================================================
 
 def login_user(identifier, password):
     """
-    Authenticate user and create Streamlit session.
+    Authenticate and store user information in Streamlit session.
     """
 
-    user = authenticate_user(
-        identifier,
-        password,
-    )
+    user = authenticate_user(identifier, password)
 
     if not user:
         return False
 
     st.session_state["authenticated"] = True
-
     st.session_state["user_id"] = user["id"]
-
     st.session_state["full_name"] = user["full_name"]
-
     st.session_state["email"] = user["email"]
-
     st.session_state["username"] = user["username"]
-
     st.session_state["user_role"] = user["role"]
 
     return True
@@ -427,26 +339,31 @@ def login_user(identifier, password):
 # ============================================================
 
 def logout_user():
+    """
+    Log the current user out.
+    """
 
-    st.session_state["authenticated"] = False
+    keys_to_clear = [
+        "authenticated",
+        "user_id",
+        "full_name",
+        "email",
+        "username",
+        "user_role",
+        "analysis_result",
+        "dashboard_analysis_result",
+        "last_saved_inspection_id",
+    ]
 
-    st.session_state["user_id"] = None
-
-    st.session_state["full_name"] = None
-
-    st.session_state["email"] = None
-
-    st.session_state["username"] = None
-
-    st.session_state["user_role"] = None
+    for key in keys_to_clear:
+        st.session_state.pop(key, None)
 
 
 # ============================================================
-# AUTH STATUS
+# AUTHENTICATION CHECK
 # ============================================================
 
 def is_authenticated():
-
     return st.session_state.get(
         "authenticated",
         False,
@@ -457,10 +374,13 @@ def is_authenticated():
 # ROLE CHECK
 # ============================================================
 
-def has_role(allowed_roles):
+def has_role(*roles):
+    """
+    Check whether the logged-in user has one of the given roles.
+    """
 
-    role = st.session_state.get(
+    current_role = st.session_state.get(
         "user_role"
     )
 
-    return role in allowed_roles
+    return current_role in roles

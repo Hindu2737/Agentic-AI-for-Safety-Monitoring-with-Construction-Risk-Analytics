@@ -36,7 +36,7 @@ if "dashboard_analysis_result" not in st.session_state:
 st.markdown("""
 <div class="hero">
 <h1>🏗️ ConstructAI</h1>
-<p>Executive Construction Risk Intelligence Platform</p>
+<p>Agentic AI-Based Construction Risk Intelligence and Safety Monitoring Platform</p>
 </div>
 """, unsafe_allow_html=True)
 

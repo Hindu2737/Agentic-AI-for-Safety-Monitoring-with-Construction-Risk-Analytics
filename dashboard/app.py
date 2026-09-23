@@ -32,7 +32,7 @@ from utils.auth import (
 # ============================================================
 
 st.set_page_config(
-    page_title="ConstructAI",
+    page_title="Construct-AI",
     page_icon="🏗️",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -138,10 +138,10 @@ if not is_authenticated():
         """
         <div class="auth-header">
             <div class="auth-title">
-                🏗️ ConstructAI
+                🏗️ Construction-AI
             </div>
             <div class="auth-subtitle">
-                Agentic Construction Risk Intelligence Platform
+                Agentic AI-Based Construction Risk Intelligence and Safety Monitoring Platform
             </div>
         </div>
         """,
@@ -373,10 +373,10 @@ role = st.session_state.get(
 
 with st.sidebar:
 
-    st.title("🏗️ ConstructAI")
+    st.title("🏗️ Construction-AI")
 
     st.caption(
-        "Construction Risk Intelligence"
+        "Agentic AI-Based Construction Risk Intelligence and Safety Monitoring Platform"
     )
 
     st.divider()
