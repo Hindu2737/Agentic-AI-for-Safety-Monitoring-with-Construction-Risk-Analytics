@@ -746,24 +746,6 @@ def show_application():
                 icon="👷",
                 url_path="worker",
             ),
-            st.Page(
-                "app_pages/site_assessment.py",
-                title="Site Assessment",
-                icon="🚨",
-                url_path="site-assessment",
-            ),
-            st.Page(
-                "app_pages/live_monitoring.py",
-                title="Live Monitoring",
-                icon="📹",
-                url_path="live-monitoring",
-            ),
-            st.Page(
-                "app_pages/inspection_history.py",
-                title="Inspection History",
-                icon="📋",
-                url_path="inspection-history",
-            ),
         ]
 
     # ========================================================
