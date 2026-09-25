@@ -142,10 +142,10 @@ st.markdown(
     }
 
     .brand-title {
-        color: white;
         font-size: 42px;
         font-weight: 800;
-        margin: 0;
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
     }
 
     .brand-subtitle {
@@ -186,19 +186,13 @@ st.markdown(
 # ============================================================
 
 def show_brand():
-
     st.markdown(
         """
         <div class="brand-header">
-
-            <div class="brand-title">
-                🏗️ ConstructAI
-            </div>
-
+            <h1 class="brand-title">🏗️ ConstructAI</h1>
             <div class="brand-subtitle">
                 Agentic Construction Risk Intelligence Platform
             </div>
-
         </div>
         """,
         unsafe_allow_html=True,
@@ -421,27 +415,15 @@ def show_create_account():
             placeholder="Re-enter your password",
         )
 
-        st.markdown(
+        st.info(
             """
-            <div style="
-                background:#f5f6f8;
-                padding:16px;
-                border-radius:12px;
-                margin-top:10px;
-                margin-bottom:15px;
-            ">
-                <strong>Password requirements</strong>
-
-                <br><br>
-
-                • At least 8 characters<br>
-                • At least one uppercase letter<br>
-                • At least one lowercase letter<br>
-                • At least one number
-
-            </div>
-            """,
-            unsafe_allow_html=True,
+            **Password requirements**
+            
+            - At least 8 characters
+            - At least one uppercase letter
+            - At least one lowercase letter
+            - At least one number
+            """
         )
 
         submitted = st.form_submit_button(
@@ -564,13 +546,9 @@ def show_authentication():
 
 def perform_logout():
 
-    session_token = st.session_state.get(
-        "session_token"
-    )
+    
 
-    logout_user(
-        session_token
-    )
+    logout_user()
 
     try:
 
@@ -641,7 +619,6 @@ def show_sidebar():
             """
         )
 
-        st.divider()
 
         if st.button(
             "🚪 Logout",
@@ -656,48 +633,50 @@ def show_sidebar():
 # ============================================================
 
 def show_application():
-
     user_role = st.session_state.get(
         "user_role",
         "Worker",
     )
 
-    # --------------------------------------------------------
-    # ADMIN
-    # --------------------------------------------------------
+    # ========================================================
+    # SESSION TOKEN
+    # ========================================================
+
+    session_token = st.session_state.get(
+        "session_token"
+    )
+
+    # ========================================================
+    # CREATE ROLE-BASED PAGES
+    # ========================================================
 
     if user_role == "Admin":
 
         pages = [
-
             st.Page(
                 "app_pages/admin_portal.py",
                 title="Admin Portal",
                 icon="👑",
                 url_path="admin",
             ),
-
             st.Page(
                 "app_pages/site_assessment.py",
                 title="Site Assessment",
                 icon="🚨",
                 url_path="site-assessment",
             ),
-
             st.Page(
                 "app_pages/dashboard.py",
                 title="Executive Dashboard",
                 icon="📊",
                 url_path="executive-dashboard",
             ),
-
             st.Page(
                 "app_pages/live_monitoring.py",
                 title="Live Monitoring",
                 icon="📹",
                 url_path="live-monitoring",
             ),
-
             st.Page(
                 "app_pages/inspection_history.py",
                 title="Inspection History",
@@ -705,36 +684,28 @@ def show_application():
                 url_path="inspection-history",
             ),
         ]
-
-    # --------------------------------------------------------
-    # MANAGER
-    # --------------------------------------------------------
 
     elif user_role == "Manager":
 
         pages = [
-
             st.Page(
                 "app_pages/site_assessment.py",
                 title="Site Assessment",
                 icon="🚨",
                 url_path="site-assessment",
             ),
-
             st.Page(
                 "app_pages/dashboard.py",
                 title="Executive Dashboard",
                 icon="📊",
                 url_path="executive-dashboard",
             ),
-
             st.Page(
                 "app_pages/live_monitoring.py",
                 title="Live Monitoring",
                 icon="📹",
                 url_path="live-monitoring",
             ),
-
             st.Page(
                 "app_pages/inspection_history.py",
                 title="Inspection History",
@@ -743,28 +714,21 @@ def show_application():
             ),
         ]
 
-    # --------------------------------------------------------
-    # SAFETY OFFICER
-    # --------------------------------------------------------
-
     elif user_role == "Safety Officer":
 
         pages = [
-
             st.Page(
                 "app_pages/site_assessment.py",
                 title="Site Assessment",
                 icon="🚨",
                 url_path="site-assessment",
             ),
-
             st.Page(
                 "app_pages/live_monitoring.py",
                 title="Live Monitoring",
                 icon="📹",
                 url_path="live-monitoring",
             ),
-
             st.Page(
                 "app_pages/inspection_history.py",
                 title="Inspection History",
@@ -773,35 +737,27 @@ def show_application():
             ),
         ]
 
-    # --------------------------------------------------------
-    # WORKER
-    # --------------------------------------------------------
-
     else:
 
         pages = [
-
             st.Page(
                 "app_pages/worker_portal.py",
                 title="Worker Portal",
                 icon="👷",
                 url_path="worker",
             ),
-
             st.Page(
                 "app_pages/site_assessment.py",
                 title="Site Assessment",
                 icon="🚨",
                 url_path="site-assessment",
             ),
-
             st.Page(
                 "app_pages/live_monitoring.py",
                 title="Live Monitoring",
                 icon="📹",
                 url_path="live-monitoring",
             ),
-
             st.Page(
                 "app_pages/inspection_history.py",
                 title="Inspection History",
@@ -810,14 +766,51 @@ def show_application():
             ),
         ]
 
-    # --------------------------------------------------------
-    # CREATE NAVIGATION
-    # --------------------------------------------------------
+    # ========================================================
+    # CREATE NAVIGATION ROUTER
+    # ========================================================
 
     pg = st.navigation(
         pages,
-        position="sidebar",
+        position="hidden",
     )
+
+    # ========================================================
+    # CUSTOM SIDEBAR NAVIGATION
+    # ========================================================
+
+    with st.sidebar:
+
+        st.markdown(
+            """
+            <div style="
+                font-size:14px;
+                font-weight:700;
+                color:#6b7280;
+                margin-top:10px;
+                margin-bottom:8px;
+            ">
+                NAVIGATION
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        for page in pages:
+
+            st.page_link(
+                page,
+                label=page.title,
+                icon=page.icon,
+                width="stretch",
+                query_params={
+                    "session": session_token
+                },
+            )
+
+    # ========================================================
+    # RUN CURRENT PAGE
+    # ========================================================
 
     pg.run()
 
