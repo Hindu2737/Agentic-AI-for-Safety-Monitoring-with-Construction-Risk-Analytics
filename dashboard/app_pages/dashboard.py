@@ -3,6 +3,27 @@ from main import run_analysis
 from reporting.risk_summary import create_risk_summary
 from reporting.recommendations import generate_recommendations
 from reporting.pdf_generator import generate_pdf_report
+from utils.auth import restore_login_session
+
+
+# ============================================================
+# RESTORE LOGIN SESSION AFTER PAGE REFRESH
+# ============================================================
+
+if not st.session_state.get("authenticated", False):
+
+    session_token = st.query_params.get("session")
+
+    if session_token:
+        restore_login_session(session_token)
+
+
+# ============================================================
+# LOGIN CHECK
+# ============================================================
+
+if not st.session_state.get("authenticated", False):
+    st.switch_page("app.py")
 
 st.set_page_config(
     page_title="ConstructAI | Executive Dashboard",

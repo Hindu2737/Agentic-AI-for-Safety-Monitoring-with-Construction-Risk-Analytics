@@ -12,9 +12,28 @@ from agents.site_risk_agent import SiteRiskAgent
 from agents.safety_intelligence_agent import SafetyIntelligenceAgent
 from agents.compliance_agent import ComplianceAgent
 from agents.insurance_agent import InsuranceIntelligenceAgent
-
 from utils.database import save_inspection
+from utils.auth import restore_login_session
 
+
+# ============================================================
+# RESTORE LOGIN SESSION AFTER PAGE REFRESH
+# ============================================================
+
+if not st.session_state.get("authenticated", False):
+
+    session_token = st.query_params.get("session")
+
+    if session_token:
+        restore_login_session(session_token)
+
+
+# ============================================================
+# LOGIN CHECK
+# ============================================================
+
+if not st.session_state.get("authenticated", False):
+    st.switch_page("app.py")
 
 # ============================================================
 # PAGE CONFIGURATION

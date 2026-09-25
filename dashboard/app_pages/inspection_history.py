@@ -1,6 +1,5 @@
 import json
 from pathlib import Path
-
 import pandas as pd
 import streamlit as st
 
@@ -9,7 +8,27 @@ from utils.database import (
     get_recent_inspections,
     get_recent_live_alerts,
 )
+from utils.auth import restore_login_session
 
+
+# ============================================================
+# RESTORE LOGIN SESSION AFTER PAGE REFRESH
+# ============================================================
+
+if not st.session_state.get("authenticated", False):
+
+    session_token = st.query_params.get("session")
+
+    if session_token:
+        restore_login_session(session_token)
+
+
+# ============================================================
+# LOGIN CHECK
+# ============================================================
+
+if not st.session_state.get("authenticated", False):
+    st.switch_page("app.py")
 
 # ============================================================
 # PAGE CONFIGURATION

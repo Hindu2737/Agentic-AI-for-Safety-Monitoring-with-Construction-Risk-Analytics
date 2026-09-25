@@ -1,21 +1,26 @@
 import sys
+import sqlite3
 from pathlib import Path
 
 import streamlit as st
 
 
 # ============================================================
-# PROJECT ROOT
+# PROJECT PATH
 # ============================================================
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+
+    sys.path.insert(
+        0,
+        str(PROJECT_ROOT),
+    )
 
 
 # ============================================================
-# AUTHENTICATION
+# AUTH IMPORTS
 # ============================================================
 
 from utils.auth import (
@@ -23,16 +28,28 @@ from utils.auth import (
     create_user,
     login_user,
     logout_user,
-    is_authenticated,
+    create_login_session,
+    restore_login_session,
 )
 
 
 # ============================================================
-# PAGE CONFIG
+# DATABASE
+# ============================================================
+
+DATABASE_PATH = (
+    PROJECT_ROOT
+    / "database"
+    / "construction_ai.db"
+)
+
+
+# ============================================================
+# STREAMLIT CONFIG
 # ============================================================
 
 st.set_page_config(
-    page_title="Construct-AI",
+    page_title="ConstructAI",
     page_icon="🏗️",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -40,533 +57,803 @@ st.set_page_config(
 
 
 # ============================================================
-# INITIALIZE DATABASE
+# INITIALIZE AUTH DATABASE
 # ============================================================
 
 initialize_users_table()
 
 
 # ============================================================
-# SESSION STATE
+# SESSION RESTORATION
 # ============================================================
 
-if "authenticated" not in st.session_state:
-    st.session_state["authenticated"] = False
+def restore_session_from_url():
 
-if "user_id" not in st.session_state:
-    st.session_state["user_id"] = None
+    if st.session_state.get(
+        "authenticated",
+        False,
+    ):
+        return True
 
-if "full_name" not in st.session_state:
-    st.session_state["full_name"] = None
+    try:
 
-if "email" not in st.session_state:
-    st.session_state["email"] = None
+        session_token = st.query_params.get(
+            "session"
+        )
 
-if "username" not in st.session_state:
-    st.session_state["username"] = None
+    except Exception:
 
-if "user_role" not in st.session_state:
-    st.session_state["user_role"] = None
+        session_token = None
 
-if "analysis_result" not in st.session_state:
-    st.session_state["analysis_result"] = None
+    if not session_token:
 
-if "dashboard_analysis_result" not in st.session_state:
-    st.session_state["dashboard_analysis_result"] = None
+        return False
 
-if "last_saved_inspection_id" not in st.session_state:
-    st.session_state["last_saved_inspection_id"] = None
-
-
-# ============================================================
-# LOGIN / SIGNUP PAGE
-# ============================================================
-
-if not is_authenticated():
-
-    # --------------------------------------------------------
-    # CUSTOM LOGIN CSS
-    # --------------------------------------------------------
-
-    st.markdown(
-        """
-        <style>
-
-        .auth-header {
-            max-width: 700px;
-            margin: 3rem auto 2rem auto;
-            padding: 2.5rem;
-            border-radius: 22px;
-            background: linear-gradient(
-                135deg,
-                #111827,
-                #1f2937
-            );
-            color: white;
-            text-align: center;
-        }
-
-        .auth-title {
-            font-size: 2.7rem;
-            font-weight: 800;
-            margin: 0;
-        }
-
-        .auth-subtitle {
-            font-size: 1rem;
-            color: #d1d5db;
-            margin-top: 0.7rem;
-        }
-
-        .security-note {
-            padding: 1rem;
-            border-radius: 12px;
-            background: #f3f4f6;
-            margin-top: 1rem;
-        }
-
-        </style>
-        """,
-        unsafe_allow_html=True,
+    restored = restore_login_session(
+        session_token
     )
 
-    # --------------------------------------------------------
-    # HEADER
-    # --------------------------------------------------------
+    if restored:
+
+        st.session_state[
+            "session_token"
+        ] = session_token
+
+        return True
+
+    # Invalid/expired token
+    try:
+
+        st.query_params.clear()
+
+    except Exception:
+
+        pass
+
+    return False
+
+
+# Restore login before deciding what to display.
+restore_session_from_url()
+
+
+# ============================================================
+# GLOBAL CSS
+# ============================================================
+
+st.markdown(
+    """
+    <style>
+
+    /* Main application */
+
+    .main {
+        padding-top: 1rem;
+    }
+
+    /* Brand */
+
+    .brand-header {
+        background: #111827;
+        border-radius: 18px;
+        padding: 28px 20px;
+        text-align: center;
+        margin-bottom: 20px;
+    }
+
+    .brand-title {
+        color: white;
+        font-size: 42px;
+        font-weight: 800;
+        margin: 0;
+    }
+
+    .brand-subtitle {
+        color: #d1d5db;
+        font-size: 16px;
+        margin-top: 8px;
+    }
+
+    /* Login / signup */
+
+    .auth-title {
+        font-size: 32px;
+        font-weight: 700;
+        color: #111827;
+        margin-bottom: 5px;
+    }
+
+    .auth-subtitle {
+        color: #6b7280;
+        font-size: 15px;
+        margin-bottom: 20px;
+    }
+
+    /* Sidebar */
+
+    [data-testid="stSidebar"] {
+        border-right: 1px solid #dbe3ea;
+    }
+
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+# ============================================================
+# BRAND
+# ============================================================
+
+def show_brand():
 
     st.markdown(
         """
-        <div class="auth-header">
-            <div class="auth-title">
-                🏗️ Construction-AI
+        <div class="brand-header">
+
+            <div class="brand-title">
+                🏗️ ConstructAI
             </div>
-            <div class="auth-subtitle">
-                Agentic AI-Based Construction Risk Intelligence and Safety Monitoring Platform
+
+            <div class="brand-subtitle">
+                Agentic Construction Risk Intelligence Platform
             </div>
+
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    # --------------------------------------------------------
-    # SIGN IN / SIGN UP TABS
-    # --------------------------------------------------------
 
-    signin_tab, signup_tab = st.tabs(
-        [
-            "🔐 Sign In",
-            "📝 Create Account",
-        ]
+# ============================================================
+# VALIDATION
+# ============================================================
+
+def validate_signup_password(password):
+
+    if len(password) < 8:
+        return False
+
+    if not any(
+        char.isupper()
+        for char in password
+    ):
+        return False
+
+    if not any(
+        char.islower()
+        for char in password
+    ):
+        return False
+
+    if not any(
+        char.isdigit()
+        for char in password
+    ):
+        return False
+
+    return True
+
+
+# ============================================================
+# SIGN IN PAGE
+# ============================================================
+
+def show_sign_in():
+
+    st.markdown(
+        """
+        <div class="auth-title">
+            Welcome Back
+        </div>
+
+        <div class="auth-subtitle">
+            Sign in using your username or registered email.
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
-    # ========================================================
-    # SIGN IN TAB
-    # ========================================================
+    with st.form(
+        "login_form",
+        clear_on_submit=False,
+    ):
 
-    with signin_tab:
-
-        st.subheader("Welcome Back")
-
-        st.caption(
-            "Sign in using your username or registered email."
-        )
-
-        login_identifier = st.text_input(
+        identifier = st.text_input(
             "Username or Email",
             placeholder="Enter username or email",
-            key="login_identifier",
         )
 
-        login_password = st.text_input(
+        password = st.text_input(
             "Password",
             type="password",
             placeholder="Enter password",
-            key="login_password",
         )
 
-        st.write("")
-
-        login_button = st.button(
+        submitted = st.form_submit_button(
             "Sign In",
             use_container_width=True,
-            type="primary",
-            key="signin_button",
         )
 
-        if login_button:
+    if submitted:
 
-            if not login_identifier or not login_password:
+        if not identifier.strip():
 
-                st.error(
-                    "Please enter your username/email and password."
-                )
+            st.error(
+                "Please enter your username or email."
+            )
 
-            else:
+            return
 
-                login_success = login_user(
-                    login_identifier,
-                    login_password,
-                )
+        if not password:
 
-                if login_success:
+            st.error(
+                "Please enter your password."
+            )
 
-                    st.success(
-                        "Login successful."
-                    )
+            return
 
-                    st.rerun()
-
-                else:
-
-                    st.error(
-                        "Invalid username/email or password."
-                    )
-
-        st.info(
-            "New users can create an account using the "
-            "'Create Account' tab."
+        success, result = login_user(
+            identifier,
+            password,
         )
 
-    # ========================================================
-    # SIGN UP TAB
-    # ========================================================
+        # ----------------------------------------------------
+        # SUCCESS
+        # ----------------------------------------------------
 
-    with signup_tab:
+        if success:
 
-        st.subheader("Create Your Account")
+            user = result
 
-        st.caption(
-            "Create a new ConstructAI account."
-        )
+            session_token = create_login_session(
+                user["id"]
+            )
+
+            st.session_state[
+                "authenticated"
+            ] = True
+
+            st.session_state[
+                "user_id"
+            ] = user["id"]
+
+            st.session_state[
+                "full_name"
+            ] = user["full_name"]
+
+            st.session_state[
+                "email"
+            ] = user["email"]
+
+            st.session_state[
+                "username"
+            ] = user["username"]
+
+            st.session_state[
+                "user_role"
+            ] = user["role"]
+
+            st.session_state[
+                "session_token"
+            ] = session_token
+
+            # ------------------------------------------------
+            # Store persistent session in URL.
+            # ------------------------------------------------
+
+            st.query_params["session"] = (
+                session_token
+            )
+
+            st.rerun()
+
+        # ----------------------------------------------------
+        # INACTIVE ACCOUNT
+        # ----------------------------------------------------
+
+        elif result == "inactive":
+
+            st.error(
+                "This account is inactive. "
+                "Please contact an administrator."
+            )
+
+        # ----------------------------------------------------
+        # INVALID CREDENTIALS
+        # ----------------------------------------------------
+
+        else:
+
+            st.error(
+                "Invalid username/email or password."
+            )
+
+
+# ============================================================
+# CREATE ACCOUNT PAGE
+# ============================================================
+
+def show_create_account():
+
+    st.markdown(
+        """
+        <div class="auth-title">
+            Create Account
+        </div>
+
+        <div class="auth-subtitle">
+            Create a worker account for Construction-AI.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    with st.form(
+        "create_account_form",
+        clear_on_submit=False,
+    ):
 
         full_name = st.text_input(
             "Full Name",
             placeholder="Enter your full name",
-            key="signup_full_name",
         )
 
         email = st.text_input(
             "Email",
-            placeholder="example@email.com",
-            key="signup_email",
+            placeholder="Enter your email",
         )
 
         username = st.text_input(
             "Username",
             placeholder="Choose a username",
-            key="signup_username",
         )
 
         password = st.text_input(
             "Password",
             type="password",
             placeholder="Minimum 8 characters",
-            key="signup_password",
         )
 
         confirm_password = st.text_input(
             "Confirm Password",
             type="password",
             placeholder="Re-enter your password",
-            key="signup_confirm_password",
         )
 
         st.markdown(
             """
-            <div class="security-note">
+            <div style="
+                background:#f5f6f8;
+                padding:16px;
+                border-radius:12px;
+                margin-top:10px;
+                margin-bottom:15px;
+            ">
                 <strong>Password requirements</strong>
+
                 <br><br>
+
                 • At least 8 characters<br>
                 • At least one uppercase letter<br>
                 • At least one lowercase letter<br>
                 • At least one number
+
             </div>
             """,
             unsafe_allow_html=True,
         )
 
-        st.write("")
-
-        signup_button = st.button(
+        submitted = st.form_submit_button(
             "Create Account",
             use_container_width=True,
-            type="primary",
-            key="signup_button",
         )
 
-        if signup_button:
+    if submitted:
 
-            if not full_name:
-                st.error(
-                    "Please enter your full name."
-                )
+        if not full_name.strip():
 
-            elif not email:
-                st.error(
-                    "Please enter your email."
-                )
+            st.error(
+                "Please enter your full name."
+            )
 
-            elif not username:
-                st.error(
-                    "Please choose a username."
-                )
+            return
 
-            elif not password:
-                st.error(
-                    "Please enter a password."
-                )
+        if not email.strip():
 
-            elif password != confirm_password:
-                st.error(
-                    "Passwords do not match."
-                )
+            st.error(
+                "Please enter your email."
+            )
 
-            else:
+            return
 
-                success, message = create_user(
-                    full_name=full_name,
-                    email=email,
-                    username=username,
-                    password=password,
-                    role="Worker",
-                )
+        if not username.strip():
 
-                if success:
+            st.error(
+                "Please choose a username."
+            )
 
-                    st.success(message)
+            return
 
-                    st.info(
-                        "Your account has been created as a Worker. "
-                        "Go to the Sign In tab to access your account."
-                    )
+        if not password:
 
-                else:
+            st.error(
+                "Please enter a password."
+            )
 
-                    st.error(message)
+            return
 
-    st.stop()
+        if password != confirm_password:
+
+            st.error(
+                "Passwords do not match."
+            )
+
+            return
+
+        if not validate_signup_password(
+            password
+        ):
+
+            st.error(
+                "Password must contain at least "
+                "8 characters, one uppercase letter, "
+                "one lowercase letter, and one number."
+            )
+
+            return
+
+        # ----------------------------------------------------
+        # Public signup ALWAYS creates Worker.
+        # ----------------------------------------------------
+
+        success, result = create_user(
+            full_name=full_name,
+            username=username,
+            email=email,
+            password=password,
+            role="Worker",
+        )
+
+        if success:
+
+            st.success(
+                "Account created successfully! "
+                "You can now sign in."
+            )
+
+        else:
+
+            st.error(
+                result
+            )
 
 
 # ============================================================
-# LOGGED-IN USER
+# AUTHENTICATION SCREEN
 # ============================================================
 
-username = st.session_state.get(
-    "username",
-    "User",
-)
+def show_authentication():
 
-full_name = st.session_state.get(
-    "full_name",
-    username,
-)
+    show_brand()
 
-role = st.session_state.get(
-    "user_role",
-    "Worker",
-)
+    sign_in_tab, create_tab = st.tabs(
+        [
+            "🔐 Sign In",
+            "📝 Create Account",
+        ]
+    )
+
+    with sign_in_tab:
+
+        show_sign_in()
+
+    with create_tab:
+
+        show_create_account()
+
+    st.info(
+        "New users can create an account using "
+        "the 'Create Account' tab."
+    )
+
+
+# ============================================================
+# LOGOUT
+# ============================================================
+
+def perform_logout():
+
+    session_token = st.session_state.get(
+        "session_token"
+    )
+
+    logout_user(
+        session_token
+    )
+
+    try:
+
+        st.query_params.clear()
+
+    except Exception:
+
+        pass
+
+    st.session_state.clear()
+
+    st.rerun()
 
 
 # ============================================================
 # SIDEBAR
 # ============================================================
 
-with st.sidebar:
+def show_sidebar():
 
-    st.title("🏗️ Construction-AI")
+    with st.sidebar:
 
-    st.caption(
-        "Agentic AI-Based Construction Risk Intelligence and Safety Monitoring Platform"
+        st.markdown(
+            """
+            <div style="
+                font-size:30px;
+                font-weight:700;
+                margin-bottom:5px;
+            ">
+                🏗️ ConstructAI
+            </div>
+
+            <div style="
+                color:#6b7280;
+                font-size:14px;
+                margin-bottom:25px;
+            ">
+                Construction Risk Intelligence
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.divider()
+
+        full_name = st.session_state.get(
+            "full_name",
+            "User",
+        )
+
+        username = st.session_state.get(
+            "username",
+            "",
+        )
+
+        role = st.session_state.get(
+            "user_role",
+            "Worker",
+        )
+
+        st.markdown(
+            f"""
+            **👤 {full_name}**
+
+            `@{username}`
+
+            **Role:** {role}
+            """
+        )
+
+        st.divider()
+
+        if st.button(
+            "🚪 Logout",
+            use_container_width=True,
+        ):
+
+            perform_logout()
+
+
+# ============================================================
+# NAVIGATION
+# ============================================================
+
+def show_application():
+
+    user_role = st.session_state.get(
+        "user_role",
+        "Worker",
     )
 
-    st.divider()
+    # --------------------------------------------------------
+    # ADMIN
+    # --------------------------------------------------------
 
-    st.markdown("### 👤 Account")
+    if user_role == "Admin":
 
-    st.write(
-        f"**Name:** {full_name}"
+        pages = [
+
+            st.Page(
+                "app_pages/admin_portal.py",
+                title="Admin Portal",
+                icon="👑",
+                url_path="admin",
+            ),
+
+            st.Page(
+                "app_pages/site_assessment.py",
+                title="Site Assessment",
+                icon="🚨",
+                url_path="site-assessment",
+            ),
+
+            st.Page(
+                "app_pages/dashboard.py",
+                title="Executive Dashboard",
+                icon="📊",
+                url_path="executive-dashboard",
+            ),
+
+            st.Page(
+                "app_pages/live_monitoring.py",
+                title="Live Monitoring",
+                icon="📹",
+                url_path="live-monitoring",
+            ),
+
+            st.Page(
+                "app_pages/inspection_history.py",
+                title="Inspection History",
+                icon="📋",
+                url_path="inspection-history",
+            ),
+        ]
+
+    # --------------------------------------------------------
+    # MANAGER
+    # --------------------------------------------------------
+
+    elif user_role == "Manager":
+
+        pages = [
+
+            st.Page(
+                "app_pages/site_assessment.py",
+                title="Site Assessment",
+                icon="🚨",
+                url_path="site-assessment",
+            ),
+
+            st.Page(
+                "app_pages/dashboard.py",
+                title="Executive Dashboard",
+                icon="📊",
+                url_path="executive-dashboard",
+            ),
+
+            st.Page(
+                "app_pages/live_monitoring.py",
+                title="Live Monitoring",
+                icon="📹",
+                url_path="live-monitoring",
+            ),
+
+            st.Page(
+                "app_pages/inspection_history.py",
+                title="Inspection History",
+                icon="📋",
+                url_path="inspection-history",
+            ),
+        ]
+
+    # --------------------------------------------------------
+    # SAFETY OFFICER
+    # --------------------------------------------------------
+
+    elif user_role == "Safety Officer":
+
+        pages = [
+
+            st.Page(
+                "app_pages/site_assessment.py",
+                title="Site Assessment",
+                icon="🚨",
+                url_path="site-assessment",
+            ),
+
+            st.Page(
+                "app_pages/live_monitoring.py",
+                title="Live Monitoring",
+                icon="📹",
+                url_path="live-monitoring",
+            ),
+
+            st.Page(
+                "app_pages/inspection_history.py",
+                title="Inspection History",
+                icon="📋",
+                url_path="inspection-history",
+            ),
+        ]
+
+    # --------------------------------------------------------
+    # WORKER
+    # --------------------------------------------------------
+
+    else:
+
+        pages = [
+
+            st.Page(
+                "app_pages/worker_portal.py",
+                title="Worker Portal",
+                icon="👷",
+                url_path="worker",
+            ),
+
+            st.Page(
+                "app_pages/site_assessment.py",
+                title="Site Assessment",
+                icon="🚨",
+                url_path="site-assessment",
+            ),
+
+            st.Page(
+                "app_pages/live_monitoring.py",
+                title="Live Monitoring",
+                icon="📹",
+                url_path="live-monitoring",
+            ),
+
+            st.Page(
+                "app_pages/inspection_history.py",
+                title="Inspection History",
+                icon="📋",
+                url_path="inspection-history",
+            ),
+        ]
+
+    # --------------------------------------------------------
+    # CREATE NAVIGATION
+    # --------------------------------------------------------
+
+    pg = st.navigation(
+        pages,
+        position="sidebar",
     )
 
-    st.write(
-        f"**Username:** {username}"
-    )
+    pg.run()
 
-    st.write(
-        f"**Role:** {role}"
-    )
 
-    st.divider()
+# ============================================================
+# MAIN
+# ============================================================
 
-    if st.button(
-        "🚪 Logout",
-        use_container_width=True,
+def main():
+
+    # --------------------------------------------------------
+    # NOT LOGGED IN
+    # --------------------------------------------------------
+
+    if not st.session_state.get(
+        "authenticated",
+        False,
     ):
 
-        logout_user()
+        show_authentication()
 
-        st.rerun()
+        return
 
+    # --------------------------------------------------------
+    # LOGGED IN
+    # --------------------------------------------------------
 
-# ============================================================
-# ROLE-BASED NAVIGATION
-# ============================================================
+    show_sidebar()
 
-
-# ============================================================
-# WORKER
-# ============================================================
-
-if role == "Worker":
-
-    worker_page = st.Page(
-        "app_pages/worker_portal.py",
-        title="Worker Safety Portal",
-        icon="👷",
-        default=True,
-    )
-
-    pg = st.navigation(
-        [worker_page],
-        position="sidebar",
-    )
-
-    pg.run()
+    show_application()
 
 
 # ============================================================
-# ADMIN
+# RUN
 # ============================================================
 
-elif role == "Admin":
+if __name__ == "__main__":
 
-    site_assessment_page = st.Page(
-        "app_pages/site_assessment.py",
-        title="Site Assessment",
-        icon="🦺",
-    )
-
-    dashboard_page = st.Page(
-        "app_pages/dashboard.py",
-        title="Executive Dashboard",
-        icon="📊",
-    )
-
-    live_monitoring_page = st.Page(
-        "app_pages/live_monitoring.py",
-        title="Live Monitoring",
-        icon="📹",
-    )
-
-    inspection_history_page = st.Page(
-        "app_pages/inspection_history.py",
-        title="Inspection History",
-        icon="📋",
-    )
-
-    pg = st.navigation(
-        [
-            site_assessment_page,
-            dashboard_page,
-            live_monitoring_page,
-            inspection_history_page,
-        ],
-        position="sidebar",
-    )
-
-    pg.run()
-
-
-# ============================================================
-# PROJECT MANAGER
-# ============================================================
-
-elif role == "Project Manager":
-
-    site_assessment_page = st.Page(
-        "app_pages/site_assessment.py",
-        title="Site Assessment",
-        icon="🦺",
-    )
-
-    dashboard_page = st.Page(
-        "app_pages/dashboard.py",
-        title="Executive Dashboard",
-        icon="📊",
-    )
-
-    inspection_history_page = st.Page(
-        "app_pages/inspection_history.py",
-        title="Inspection History",
-        icon="📋",
-    )
-
-    pg = st.navigation(
-        [
-            site_assessment_page,
-            dashboard_page,
-            inspection_history_page,
-        ],
-        position="sidebar",
-    )
-
-    pg.run()
-
-
-# ============================================================
-# SAFETY OFFICER
-# ============================================================
-
-elif role == "Safety Officer":
-
-    site_assessment_page = st.Page(
-        "app_pages/site_assessment.py",
-        title="Site Assessment",
-        icon="🦺",
-    )
-
-    dashboard_page = st.Page(
-        "app_pages/dashboard.py",
-        title="Executive Dashboard",
-        icon="📊",
-    )
-
-    live_monitoring_page = st.Page(
-        "app_pages/live_monitoring.py",
-        title="Live Monitoring",
-        icon="📹",
-    )
-
-    inspection_history_page = st.Page(
-        "app_pages/inspection_history.py",
-        title="Inspection History",
-        icon="📋",
-    )
-
-    pg = st.navigation(
-        [
-            site_assessment_page,
-            dashboard_page,
-            live_monitoring_page,
-            inspection_history_page,
-        ],
-        position="sidebar",
-    )
-
-    pg.run()
-
-
-# ============================================================
-# INVALID ROLE
-# ============================================================
-
-else:
-
-    st.error(
-        "Your account does not have a valid role."
-    )
-
-    if st.button("Logout"):
-
-        logout_user()
-
-        st.rerun()
+    main()
