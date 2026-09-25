@@ -222,6 +222,11 @@ models/*.pkl
 models/*.pt
 models/*.pth
 
+# Deployment models
+!models/project_risk_pipeline.pkl
+!models/resource_mttf_pipeline.pkl
+!models/weather_summary_pipeline.pkl
+
 # YOLO training outputs
 runs/
 
