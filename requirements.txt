@@ -6,7 +6,7 @@ joblib
 ultralytics
 torch
 torchvision
-opencv-python
+opencv-python-headless
 Pillow
 reportlab
 streamlit-webrtc
