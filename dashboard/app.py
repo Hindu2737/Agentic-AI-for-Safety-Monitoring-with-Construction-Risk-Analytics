@@ -685,7 +685,7 @@ def show_application():
             ),
         ]
 
-    elif user_role == "Manager":
+    elif user_role == "Project Manager":
 
         pages = [
             st.Page(
