@@ -25,12 +25,7 @@ if not st.session_state.get("authenticated", False):
 if not st.session_state.get("authenticated", False):
     st.switch_page("app.py")
 
-st.set_page_config(
-    page_title="ConstructAI | Executive Dashboard",
-    page_icon="🏗️",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
+
 
 # ---------- Professional UI ----------
 st.markdown("""
