@@ -29,22 +29,11 @@ if not st.session_state.get("authenticated", False):
 
 
 # ============================================================
-# LOGIN CHECK
+# PAGE ACCESS
 # ============================================================
 
 if not st.session_state.get("authenticated", False):
-    st.switch_page("app.py")
-
-# ============================================================
-# PAGE CONFIGURATION
-# ============================================================
-
-st.set_page_config(
-    page_title="ConstructAI | Site Assessment",
-    page_icon="🏗️",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
+    st.stop()
 
 
 # ============================================================
