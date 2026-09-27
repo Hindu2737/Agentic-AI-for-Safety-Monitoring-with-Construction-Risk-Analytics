@@ -155,17 +155,38 @@ st.markdown(
 # ============================================================
 
 @st.cache_resource
-def load_agents():
-    return {
-        "project": ProjectAgent(),
-        "resource": ResourceAgent(),
-        "weather": WeatherAgent(),
-        "safety": SafetyAgent(),
-        "site_risk": SiteRiskAgent(),
-        "safety_intelligence": SafetyIntelligenceAgent(),
-        "compliance": ComplianceAgent(),
-        "insurance": InsuranceIntelligenceAgent(),
-    }
+def get_project_agent():
+    return ProjectAgent()
+
+
+@st.cache_resource
+def get_resource_agent():
+    return ResourceAgent()
+
+
+@st.cache_resource
+def get_safety_agent():
+    return SafetyAgent()
+
+
+@st.cache_resource
+def get_site_risk_agent():
+    return SiteRiskAgent()
+
+
+@st.cache_resource
+def get_safety_intelligence_agent():
+    return SafetyIntelligenceAgent()
+
+
+@st.cache_resource
+def get_compliance_agent():
+    return ComplianceAgent()
+
+
+@st.cache_resource
+def get_insurance_agent():
+    return InsuranceIntelligenceAgent()
 
 
 # ============================================================
@@ -195,13 +216,11 @@ def load_source_data():
 # ============================================================
 
 def run_analysis(
-    agents,
     sample_project,
     sample_equipment,
     sample_weather,
     uploaded_image,
 ):
-
     image_suffix = Path(
         uploaded_image.name
     ).suffix.lower()
@@ -221,45 +240,99 @@ def run_analysis(
 
     try:
 
-        project_risk = agents["project"].predict_risk(
+        # ----------------------------------------------------
+        # Load only the agents required for this assessment
+        # ----------------------------------------------------
+
+        project_agent = get_project_agent()
+        resource_agent = get_resource_agent()
+        safety_agent = get_safety_agent()
+        site_risk_agent = get_site_risk_agent()
+        safety_intelligence_agent = (
+            get_safety_intelligence_agent()
+        )
+        compliance_agent = get_compliance_agent()
+        insurance_agent = get_insurance_agent()
+
+        # ----------------------------------------------------
+        # Project Risk
+        # ----------------------------------------------------
+
+        project_risk = project_agent.predict_risk(
             sample_project
         )
 
-        equipment_mttf = agents["resource"].predict_mttf(
+        # ----------------------------------------------------
+        # Equipment Reliability
+        # ----------------------------------------------------
+
+        equipment_mttf = resource_agent.predict_mttf(
             sample_equipment
         )
 
-        weather_prediction = agents["weather"].predict_weather(
-            sample_weather
+        # ----------------------------------------------------
+        # Weather Intelligence
+        #
+        # Render free instance cannot safely load the huge
+        # weather ML pipeline because of the 512 MB RAM limit.
+        #
+        # Use the configured weather condition directly.
+        # ----------------------------------------------------
+
+        weather_prediction = sample_project.get(
+            "Weather_Condition",
+            "Unknown"
         )
 
-        safety_report = agents["safety"].inspect_image(
+        # ----------------------------------------------------
+        # Computer Vision / Safety
+        # ----------------------------------------------------
+
+        safety_report = safety_agent.inspect_image(
             str(temporary_image_path)
         )
 
+        # ----------------------------------------------------
+        # Worker Protection
+        # ----------------------------------------------------
+
         worker_protection_report = (
-            agents["safety_intelligence"]
+            safety_intelligence_agent
             .analyze_worker_protection(
                 safety_report
             )
         )
 
-        site_report = agents["site_risk"].assess_site(
+        # ----------------------------------------------------
+        # Site Risk
+        # ----------------------------------------------------
+
+        site_report = site_risk_agent.assess_site(
             project_risk=project_risk,
             equipment_mttf=equipment_mttf,
             weather=weather_prediction,
             safety_report=safety_report,
         )
 
+        # ----------------------------------------------------
+        # Compliance
+        # ----------------------------------------------------
+
         compliance_report = (
-            agents["compliance"].assess_compliance(
+            compliance_agent.assess_compliance(
                 safety_report=safety_report,
-                worker_protection_report=worker_protection_report,
+                worker_protection_report=(
+                    worker_protection_report
+                ),
             )
         )
 
+        # ----------------------------------------------------
+        # Insurance
+        # ----------------------------------------------------
+
         insurance_report = (
-            agents["insurance"].assess_insurance_risk(
+            insurance_agent.assess_insurance_risk(
                 site_report=site_report,
                 compliance_report=compliance_report,
                 equipment_mttf=equipment_mttf,
@@ -268,15 +341,29 @@ def run_analysis(
 
         return {
             "project_risk": project_risk,
+
             "equipment_mttf": equipment_mttf,
+
             "weather_prediction": weather_prediction,
+
             "safety_report": safety_report,
-            "worker_protection_report": worker_protection_report,
+
+            "worker_protection_report":
+                worker_protection_report,
+
             "site_report": site_report,
-            "compliance_report": compliance_report,
-            "insurance_report": insurance_report,
-            "image_name": uploaded_image.name,
-            "image_bytes": uploaded_image.getvalue(),
+
+            "compliance_report":
+                compliance_report,
+
+            "insurance_report":
+                insurance_report,
+
+            "image_name":
+                uploaded_image.name,
+
+            "image_bytes":
+                uploaded_image.getvalue(),
         }
 
     finally:
@@ -305,7 +392,6 @@ st.session_state.setdefault(
 # LOAD DATA
 # ============================================================
 
-agents = load_agents()
 
 project_df, equipment_df, weather_df = (
     load_source_data()
@@ -647,7 +733,6 @@ if analyze_site:
 
             st.session_state["analysis_result"] = (
                 run_analysis(
-                    agents=agents,
                     sample_project=sample_project,
                     sample_equipment=(
                         equipment_template.copy()
@@ -655,7 +740,7 @@ if analyze_site:
                     sample_weather=(
                         weather_template.copy()
                     ),
-                    uploaded_image=uploaded_image,
+                uploaded_image=uploaded_image,
                 )
             )
 
