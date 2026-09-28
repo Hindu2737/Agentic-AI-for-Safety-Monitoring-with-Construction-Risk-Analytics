@@ -149,43 +149,35 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-
 # ============================================================
-# AGENT LOADING
+# AGENT HELPERS
 # ============================================================
 
-@st.cache_resource
-def get_project_agent():
+def create_project_agent():
     return ProjectAgent()
 
 
-@st.cache_resource
-def get_resource_agent():
+def create_resource_agent():
     return ResourceAgent()
 
 
-@st.cache_resource
-def get_safety_agent():
+def create_safety_agent():
     return SafetyAgent()
 
 
-@st.cache_resource
-def get_site_risk_agent():
+def create_site_risk_agent():
     return SiteRiskAgent()
 
 
-@st.cache_resource
-def get_safety_intelligence_agent():
+def create_safety_intelligence_agent():
     return SafetyIntelligenceAgent()
 
 
-@st.cache_resource
-def get_compliance_agent():
+def create_compliance_agent():
     return ComplianceAgent()
 
 
-@st.cache_resource
-def get_insurance_agent():
+def create_insurance_agent():
     return InsuranceIntelligenceAgent()
 
 
@@ -221,6 +213,9 @@ def run_analysis(
     sample_weather,
     uploaded_image,
 ):
+
+    import gc
+
     image_suffix = Path(
         uploaded_image.name
     ).suffix.lower()
@@ -240,61 +235,68 @@ def run_analysis(
 
     try:
 
-        # ----------------------------------------------------
-        # Load only the agents required for this assessment
-        # ----------------------------------------------------
+        # ========================================================
+        # 1. PROJECT RISK
+        # ========================================================
 
-        project_agent = get_project_agent()
-        resource_agent = get_resource_agent()
-        safety_agent = get_safety_agent()
-        site_risk_agent = get_site_risk_agent()
-        safety_intelligence_agent = (
-            get_safety_intelligence_agent()
-        )
-        compliance_agent = get_compliance_agent()
-        insurance_agent = get_insurance_agent()
-
-        # ----------------------------------------------------
-        # Project Risk
-        # ----------------------------------------------------
+        project_agent = create_project_agent()
 
         project_risk = project_agent.predict_risk(
             sample_project
         )
 
-        # ----------------------------------------------------
-        # Equipment Reliability
-        # ----------------------------------------------------
+        del project_agent
+        gc.collect()
+
+
+        # ========================================================
+        # 2. EQUIPMENT RELIABILITY
+        # ========================================================
+
+        resource_agent = create_resource_agent()
 
         equipment_mttf = resource_agent.predict_mttf(
             sample_equipment
         )
 
-        # ----------------------------------------------------
-        # Weather Intelligence
-        #
-        # Render free instance cannot safely load the huge
-        # weather ML pipeline because of the 512 MB RAM limit.
-        #
-        # Use the configured weather condition directly.
-        # ----------------------------------------------------
+        del resource_agent
+        gc.collect()
+
+
+        # ========================================================
+        # 3. WEATHER
+        # ========================================================
+
+        # Do NOT load the huge weather model on Render.
+        # Use the selected weather condition directly.
 
         weather_prediction = sample_project.get(
             "Weather_Condition",
             "Unknown"
         )
 
-        # ----------------------------------------------------
-        # Computer Vision / Safety
-        # ----------------------------------------------------
+
+        # ========================================================
+        # 4. COMPUTER VISION / SAFETY
+        # ========================================================
+
+        safety_agent = create_safety_agent()
 
         safety_report = safety_agent.inspect_image(
             str(temporary_image_path)
         )
 
-        # ----------------------------------------------------
-        # Worker Protection
-        # ----------------------------------------------------
+        del safety_agent
+        gc.collect()
+
+
+        # ========================================================
+        # 5. WORKER PROTECTION
+        # ========================================================
+
+        safety_intelligence_agent = (
+            create_safety_intelligence_agent()
+        )
 
         worker_protection_report = (
             safety_intelligence_agent
@@ -303,9 +305,15 @@ def run_analysis(
             )
         )
 
-        # ----------------------------------------------------
-        # Site Risk
-        # ----------------------------------------------------
+        del safety_intelligence_agent
+        gc.collect()
+
+
+        # ========================================================
+        # 6. SITE RISK
+        # ========================================================
+
+        site_risk_agent = create_site_risk_agent()
 
         site_report = site_risk_agent.assess_site(
             project_risk=project_risk,
@@ -314,9 +322,15 @@ def run_analysis(
             safety_report=safety_report,
         )
 
-        # ----------------------------------------------------
-        # Compliance
-        # ----------------------------------------------------
+        del site_risk_agent
+        gc.collect()
+
+
+        # ========================================================
+        # 7. COMPLIANCE
+        # ========================================================
+
+        compliance_agent = create_compliance_agent()
 
         compliance_report = (
             compliance_agent.assess_compliance(
@@ -327,9 +341,15 @@ def run_analysis(
             )
         )
 
-        # ----------------------------------------------------
-        # Insurance
-        # ----------------------------------------------------
+        del compliance_agent
+        gc.collect()
+
+
+        # ========================================================
+        # 8. INSURANCE
+        # ========================================================
+
+        insurance_agent = create_insurance_agent()
 
         insurance_report = (
             insurance_agent.assess_insurance_risk(
@@ -339,19 +359,33 @@ def run_analysis(
             )
         )
 
+        del insurance_agent
+        gc.collect()
+
+
+        # ========================================================
+        # FINAL RESULT
+        # ========================================================
+
         return {
-            "project_risk": project_risk,
 
-            "equipment_mttf": equipment_mttf,
+            "project_risk":
+                project_risk,
 
-            "weather_prediction": weather_prediction,
+            "equipment_mttf":
+                equipment_mttf,
 
-            "safety_report": safety_report,
+            "weather_prediction":
+                weather_prediction,
+
+            "safety_report":
+                safety_report,
 
             "worker_protection_report":
                 worker_protection_report,
 
-            "site_report": site_report,
+            "site_report":
+                site_report,
 
             "compliance_report":
                 compliance_report,
@@ -366,11 +400,14 @@ def run_analysis(
                 uploaded_image.getvalue(),
         }
 
+
     finally:
 
         temporary_image_path.unlink(
             missing_ok=True
         )
+
+        gc.collect()
 
 
 # ============================================================
