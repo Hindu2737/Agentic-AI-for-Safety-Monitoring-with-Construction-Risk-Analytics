@@ -6,9 +6,7 @@ import cv2
 import streamlit as st
 from streamlit_webrtc import WebRtcMode, VideoProcessorBase, webrtc_streamer
 
-from agents.safety_agent import SafetyAgent
-from agents.safety_intelligence_agent import SafetyIntelligenceAgent
-from agents.site_risk_agent import SiteRiskAgent
+
 from utils.alerts import AlertManager
 from utils.email_alerts import EmailAlertManager
 from utils.database import save_live_alert
@@ -220,28 +218,23 @@ st.markdown(
 
 
 # ============================================================
-# LOAD AI AGENTS
+# LAZY LOAD AI AGENTS
 # ============================================================
+# Heavy ML components such as YOLO/PyTorch are loaded ONLY
+# when the live camera processor actually starts.
+# This reduces Render startup memory usage.
 
 @st.cache_resource
 def load_agents():
+    from agents.safety_agent import SafetyAgent
+    from agents.safety_intelligence_agent import SafetyIntelligenceAgent
+    from agents.site_risk_agent import SiteRiskAgent
+
     return (
         SafetyAgent(),
         SafetyIntelligenceAgent(),
         SiteRiskAgent(),
     )
-
-
-try:
-    (
-        safety_agent,
-        safety_intelligence_agent,
-        site_risk_agent,
-    ) = load_agents()
-except Exception as e:
-    st.error("Unable to load the live-monitoring AI agents.")
-    st.code(str(e))
-    st.stop()
 
 
 # ============================================================
@@ -349,9 +342,24 @@ def get_project_context():
 class SafetyVideoProcessor(VideoProcessorBase):
 
     def __init__(self):
-        self.safety_agent = safety_agent
-        self.safety_intelligence_agent = safety_intelligence_agent
-        self.site_risk_agent = site_risk_agent
+
+        # Load heavy AI models only when the camera processor starts.
+        try:
+            (
+                self.safety_agent,
+                self.safety_intelligence_agent,
+                self.site_risk_agent,
+            ) = load_agents()
+
+        except Exception as e:
+            print(
+                "Unable to load live-monitoring AI agents:",
+                e
+            )
+
+            self.safety_agent = None
+            self.safety_intelligence_agent = None
+            self.site_risk_agent = None
 
         self.project_risk = "Low"
         self.equipment_mttf = 1000.0
@@ -359,6 +367,26 @@ class SafetyVideoProcessor(VideoProcessorBase):
 
     def recv(self, frame):
         image = frame.to_ndarray(format="bgr24")
+        # If AI models could not be loaded, return the camera frame
+        # # without running AI inference
+        if (
+        self.safety_agent is None
+        or self.safety_intelligence_agent is None
+        or self.site_risk_agent is None
+        ):
+            cv2.putText(
+            image,
+            "AI MODEL UNAVAILABLE",
+            (20, 50),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.8,
+            (0, 0, 255),
+            2,
+            )
+            return av.VideoFrame.from_ndarray(
+            image,
+            format="bgr24",
+            )
 
         # ----------------------------------------------------
         # SAFETY AGENT

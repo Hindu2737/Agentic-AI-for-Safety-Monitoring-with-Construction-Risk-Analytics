@@ -37,7 +37,7 @@ class SafetyAgent:
             frame,
             verbose=False,
             conf=0.50,
-            imgsz=640
+            imgsz=320
         )
 
         return self._process_results(results)
